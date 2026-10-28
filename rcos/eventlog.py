@@ -1,6 +1,6 @@
-"""Structured event log (OWNER: Member 1; Member 5 consumes it).
+"""Structured event log (OWNER: Juvaugn; Member 5 consumes it).
 
-LOG FORMAT (fixed - do not change without telling Member 1 and Member 5):
+LOG FORMAT (fixed - do not change):
 
     [t=0012] [STATE ] [P03] sensor_read READY -> RUNNING (dispatched)
     [t=0014] [MEM   ] [P04] DENIED 256KB (free 32KB, largest block 32KB) - waiting in job queue
