@@ -25,12 +25,12 @@ Requires Python 3.8+, no third-party packages.
 ## Rules for everyone
 1. Time = integer ticks. Memory = KB. **Lower priority number = higher priority.**
 2. Implement the abstract classes in `rcos/interfaces.py`; do not change their signatures
-   without asking Member 1.
+   without checking with Juvaugn.
 3. Only the engine changes process states (via `Process.transition`). Never set `proc.state` directly.
 4. Log with `log.emit(now, Category.X, message, pid)` - format is fixed (see eventlog.py).
 5. Ordinary failures (no memory) return False; contract violations raise `ResourceError`.
 6. Each module owner adds their own `tests/test_<module>.py`. Run all tests before every push.
-7. Work on your own branch; open a pull request; Member 1 reviews and merges.
+7. Work on your own branch; open a pull request; Juvaugn reviews and merges.
 
 ## Tick order (see engine.py for the full version)
 arrivals -> admission (memory) -> scheduler.on_tick -> dispatch/preempt -> CPU + I/O work
