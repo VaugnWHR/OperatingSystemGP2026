@@ -1,4 +1,4 @@
-"""System resource configuration (OWNER: Member 1).
+"""System resource configuration (OWNER: Juvaugn).
 
 One frozen SystemConfig describes the whole simulated machine.  Anything a
 module needs to know about the machine's limits comes from here, so scenarios
