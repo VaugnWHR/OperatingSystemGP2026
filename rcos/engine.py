@@ -1,4 +1,4 @@
-"""Simulation engine and main loop (OWNER: Member 1).
+"""Simulation engine and main loop (OWNER: Juvaugn).
 
 TICK ORDER (one tick = the interval [t, t+1)):
 
