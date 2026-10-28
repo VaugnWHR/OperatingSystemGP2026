@@ -16,10 +16,10 @@ Requires Python 3.8+, no third-party packages.
 ## Who owns what
 | File | Owner | Status in skeleton |
 |---|---|---|
-| process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Member 1 | done (extend/harden) |
-| scheduler.py | Member 2 | FCFS done; **RR + Priority = TODO** |
+| process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Juvaugn Foster | done (extend/harden) |
+| scheduler.py | Samuel Kelly | FCFS done; **RR + Priority = TODO** |
 | memory.py | Member 3 | simple pool works; **placement strategy + fragmentation = TODO** |
-| io_manager.py | Member 4 | FIFO device queues work; **extend** |
+| io_manager.py | Britansia Austin| FIFO device queues work; **extend** |
 | metrics.py, scenarios.py, tests/, power.py | Member 5 | baseline works; **extend** + bonus |
 
 ## Rules for everyone
