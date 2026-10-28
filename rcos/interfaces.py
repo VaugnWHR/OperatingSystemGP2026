@@ -1,4 +1,4 @@
-"""THE CONTRACTS between modules (OWNER: Member 1 - changes go through Member 1).
+"""THE CONTRACTS between modules . Please report changes
 
 Each team member implements one of these abstract classes in their own file:
 
