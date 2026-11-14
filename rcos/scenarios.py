@@ -40,8 +40,43 @@ def io_heavy() -> List[Process]:
             for i in range(1, 6)]
 
 
+def fragmentation() -> List[Process]:
+    """External fragmentation (Member 3 demo).  Four 128KB processes fill 512KB.
+    The two short ones (P02, P04) finish first and leave two 128KB holes that are
+    NOT next to each other.  P05 needs 200KB: 256KB is free in total, but no single
+    hole is big enough, so it waits.  Run with --compact to see compaction fix it."""
+    return [
+        Process(1, "camera_driver", 0, 2, 128, [cpu(1), io("FLASH", 20), cpu(1)]),
+        Process(2, "button_check",  0, 3, 128, [cpu(2)]),
+        Process(3, "radio_stack",   0, 2, 128, [cpu(1), io("RADIO", 20), cpu(1)]),
+        Process(4, "led_blink",     0, 3, 128, [cpu(2)]),
+        Process(5, "image_buffer",  1, 1, 200, [cpu(3)]),
+    ]
+
+
+def placement() -> List[Process]:
+    """Placement strategies (Member 3 demo).  By t=6 memory has two holes of
+    different sizes: 200KB at [100-299] and 132KB at [380-511].  P05 asks for 110KB,
+    then P06 asks for 200KB.
+      best fit  puts P05 in the 132KB hole, so the 200KB hole is still whole for P06.
+      first fit and worst fit put P05 in the 200KB hole, so P06 is blocked by
+      external fragmentation until P05 finishes its sensor read.
+      next fit starts searching after the last allocation (address 500), so here it
+      happens to pick the 132KB hole too.
+    Compare with:  python main.py --scenario placement --compare-memory"""
+    return [
+        Process(1, "logger",       0, 2, 100, [cpu(1), io("FLASH", 30), cpu(1)]),
+        Process(2, "boot_check",   0, 3, 200, [cpu(2)]),
+        Process(3, "net_stack",    0, 2,  80, [cpu(1), io("RADIO", 30), cpu(1)]),
+        Process(4, "self_test",    0, 3, 120, [cpu(2)]),
+        Process(5, "sample_task",  6, 2, 110, [cpu(1), io("SENSOR", 12), cpu(1)]),
+        Process(6, "frame_buffer", 7, 2, 200, [cpu(3)]),
+    ]
+
+
 SCENARIOS: Dict[str, Callable[[], List[Process]]] = {
     "basic": basic, "memory_pressure": memory_pressure, "io_heavy": io_heavy,
+    "fragmentation": fragmentation, "placement": placement,
 }
 
 

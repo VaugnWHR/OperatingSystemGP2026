@@ -16,10 +16,15 @@ from typing import Optional, Tuple
 
 from .errors import ConfigError
 
+MEMORY_STRATEGIES = ("first", "best", "worst", "next")   # placement strategies (memory.py)
+
 
 @dataclass(frozen=True)
 class SystemConfig:
     total_memory_kb: int = 512                       # small on purpose: constrained device
+    memory_strategy: str = "first"                   # "first" | "best" | "worst" | "next"
+    memory_compaction: bool = False                  # compact when fragmentation blocks a request
+    show_memory_map: bool = False                    # log the memory map after every change
     time_quantum: int = 3                            # used by Round Robin
     io_devices: Tuple[str, ...] = ("SENSOR", "FLASH", "RADIO")
     scheduler: str = "fcfs"                          # "fcfs" | "rr" | "priority"
@@ -32,6 +37,8 @@ class SystemConfig:
     def __post_init__(self) -> None:
         if self.total_memory_kb <= 0:
             raise ConfigError("total_memory_kb must be > 0")
+        if self.memory_strategy not in MEMORY_STRATEGIES:
+            raise ConfigError(f"memory_strategy must be one of {', '.join(MEMORY_STRATEGIES)}")
         if self.time_quantum <= 0:
             raise ConfigError("time_quantum must be > 0")
         if self.max_ticks <= 0:

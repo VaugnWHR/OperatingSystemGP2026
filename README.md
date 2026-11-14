@@ -11,6 +11,9 @@ Requires Python 3.8+, no third-party packages.
     python main.py --scheduler rr --quantum 2       # once Member 2 finishes RR
     python main.py --scenario memory_pressure --quiet
     python main.py --battery 40                     # power model (bonus)
+    python main.py --scenario fragmentation --memory-map   # watch memory holes form
+    python main.py --scenario fragmentation --compact      # compaction fixes fragmentation
+    python main.py --scenario placement --compare-memory   # first/best/worst/next fit side by side
     python -m unittest discover -v                  # tests
 
 ## Who owns what
@@ -18,7 +21,7 @@ Requires Python 3.8+, no third-party packages.
 |---|---|---|
 | process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Juvaugn Foster | done (extend/harden) |
 | scheduler.py | Samuel Kelly | FCFS done; **RR + Priority = TODO** |
-| memory.py | Member 3 | simple pool works; **placement strategy + fragmentation = TODO** |
+| memory.py | Juvaugn Foster | **done**: contiguous allocation, first/best/worst/next fit, coalescing, fragmentation stats, compaction |
 | io_manager.py | Britansia Austin| FIFO device queues work; **extend** |
 | metrics.py, scenarios.py, tests/, power.py | Member 5 | baseline works; **extend** + bonus |
 

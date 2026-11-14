@@ -30,7 +30,7 @@ from .errors import ConfigError, SimulationError
 from .eventlog import Category, EventLog
 from .interfaces import IOManager, MemoryManager, PowerManager, Scheduler
 from .io_manager import SimpleIOManager
-from .memory import SimpleMemoryManager
+from .memory import ContiguousMemoryManager
 from .metrics import MetricsCollector, MetricsReport
 from .power import BatteryPowerManager, NullPowerManager
 from .process import BurstType, Process, ProcessState
@@ -76,6 +76,7 @@ class Simulator:
         cfg = self.config
         self.log.emit(0, Category.SYSTEM,
                       f"START scheduler={self.scheduler.name} memory={cfg.total_memory_kb}KB "
+                      f"({cfg.memory_strategy} fit{', compaction' if cfg.memory_compaction else ''}) "
                       f"quantum={cfg.time_quantum} devices={','.join(cfg.io_devices)} "
                       f"battery={cfg.battery_capacity if cfg.battery_capacity else 'off'}")
         while not self._all_done():
@@ -213,7 +214,9 @@ def build_simulator(config: SystemConfig) -> Simulator:
     """Wire the default components together.  Swap a component here to use a new implementation."""
     log = EventLog(echo=config.log_to_console)
     scheduler = create_scheduler(config.scheduler, config)
-    memory: MemoryManager = SimpleMemoryManager(config.total_memory_kb, log)
+    memory: MemoryManager = ContiguousMemoryManager(
+        config.total_memory_kb, strategy=config.memory_strategy,
+        compaction=config.memory_compaction, log=log, show_map=config.show_memory_map)
     io: IOManager = SimpleIOManager(config.io_devices, log)
     power: PowerManager = (BatteryPowerManager(config.battery_capacity, config.idle_power_cost, log)
                            if config.battery_capacity is not None else NullPowerManager())
