@@ -84,6 +84,64 @@ class PlacementStrategyTests(unittest.TestCase):
         self.assertEqual(mem.block_of(3).start, 0)
 
 
+class CourseExampleTests(unittest.TestCase):
+    """Lecture Notes 06 (Memory Basics: Fragmentation), dynamic partitioning example.
+
+    Free blocks of 100, 500, 200, 600 and 300KB (in address order) receive processes
+    A-E of 212, 417, 112, 83 and 426KB.  Each test checks which block every process
+    lands in and what is left of each block, exactly as the lecture's answer states.
+    """
+    BLOCKS = (100, 500, 200, 600, 300)
+    REQUESTS = (212, 417, 112, 83, 426)
+
+    def run_lecture_example(self, strategy):
+        # Build the five free blocks with a 10KB allocated separator after each one, so
+        # they stay separate holes (the separators play the part of other processes).
+        mem = make_memory(sum(self.BLOCKS) + 10 * len(self.BLOCKS), strategy)
+        block_start, address, fillers = {}, 0, []
+        for size in self.BLOCKS:
+            block_start[address] = size
+            mem.allocate(1000 + address, size, 0)
+            fillers.append(1000 + address)
+            mem.allocate(2000 + address, 10, 0)
+            address += size + 10
+        for pid in fillers:
+            mem.free(pid, 0)
+
+        placed = []
+        for pid, size in enumerate(self.REQUESTS, start=1):
+            if mem.allocate(pid, size, 1):
+                start = mem.block_of(pid).start
+                placed.append(block_start[max(s for s in block_start if s <= start)])
+            else:
+                placed.append("blocked")
+        leftovers = [hole.size for hole in mem.holes]
+        return placed, leftovers, mem
+
+    def test_first_fit_matches_lecture(self):
+        placed, leftovers, mem = self.run_lecture_example("first")
+        self.assertEqual(placed, [500, 600, 500, 100, "blocked"])
+        self.assertEqual(leftovers, [17, 176, 200, 183, 300])      # 876KB, not contiguous
+        self.assertIn(5, mem.stats.fragmentation_pids)             # external fragmentation
+
+    def test_next_fit_matches_lecture(self):
+        placed, leftovers, mem = self.run_lecture_example("next")
+        self.assertEqual(placed, [500, 600, 600, 300, "blocked"])
+        self.assertEqual(leftovers, [100, 288, 200, 71, 217])
+        self.assertIn(5, mem.stats.fragmentation_pids)
+
+    def test_best_fit_matches_lecture(self):
+        placed, leftovers, _ = self.run_lecture_example("best")
+        self.assertEqual(placed, [300, 500, 200, 500, 600])
+        self.assertEqual(leftovers, [100, 88, 174, 88])            # the 500KB block is used up
+
+    def test_worst_fit_matches_lecture(self):
+        placed, leftovers, mem = self.run_lecture_example("worst")
+        self.assertEqual(placed, [600, 500, 600, 300, "blocked"])
+        self.assertEqual(leftovers, [100, 83, 200, 276, 217])
+        self.assertIn(5, mem.stats.fragmentation_pids)
+
+
 class FreeAndCoalesceTests(unittest.TestCase):
     def test_free_merges_with_both_neighbours(self):
         mem = make_memory(100)
