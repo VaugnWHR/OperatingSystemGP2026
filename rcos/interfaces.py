@@ -1,4 +1,4 @@
-"""THE CONTRACTS between modules . Please report changes
+"""THE CONTRACTS between modules. Please report any changes to Juvaugn.
 
 Each team member implements one of these abstract classes in their own file:
 
@@ -104,6 +104,14 @@ class MemoryManager(ABC):
     def largest_free_block_kb(self) -> int:
         """Override if your design can fragment (free_kb >= largest block)."""
         return self.free_kb
+
+    def memory_map(self) -> str:
+        """Optional: a one-line picture of memory for logs and the demo."""
+        return ""
+
+    def summary_lines(self) -> List[str]:
+        """Optional: lines printed under the report at the end of a run."""
+        return []
 
 
 # ---------------------------------------------------------------------- IOManager

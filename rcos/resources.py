@@ -7,7 +7,7 @@ track of who holds what, and produces snapshots for the scheduler and metrics.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 from .errors import ResourceError
 from .eventlog import Category, EventLog
@@ -30,7 +30,7 @@ class ResourceManager:
         self.log = log
         self._cpu_owner: Optional[int] = None
         self._holding_memory: Set[int] = set()
-        self._denial_logged: Set[int] = set()   # log a denial once, not every retry
+        self._denial_logged: Dict[int, str] = {}   # pid -> reason last logged (no log spam)
 
     # -------------------------------------------------------------------- CPU
     @property
@@ -59,14 +59,16 @@ class ResourceManager:
             return AllocResult.IMPOSSIBLE
         if self.memory.allocate(proc.pid, proc.memory_kb, now):
             self._holding_memory.add(proc.pid)
-            self._denial_logged.discard(proc.pid)
+            self._denial_logged.pop(proc.pid, None)
             return AllocResult.GRANTED
-        if proc.pid not in self._denial_logged:
-            self._denial_logged.add(proc.pid)
+        free, largest = self.memory.free_kb, self.memory.largest_free_block_kb
+        reason = ("external fragmentation: enough free in total, but no single hole fits"
+                  if proc.memory_kb <= free else "not enough free memory")
+        if self._denial_logged.get(proc.pid) != reason:      # log once per reason, not every retry
+            self._denial_logged[proc.pid] = reason
             self.log.emit(now, Category.MEM,
-                          f"DENIED {proc.memory_kb}KB (free {self.memory.free_kb}KB, largest "
-                          f"block {self.memory.largest_free_block_kb}KB) - waiting in job queue",
-                          proc.pid)
+                          f"DENIED {proc.memory_kb}KB (free {free}KB, largest hole {largest}KB) - "
+                          f"{reason}; waiting in job queue", proc.pid)
         return AllocResult.DENIED
 
     def release_memory(self, proc: Process, now: int) -> int:
