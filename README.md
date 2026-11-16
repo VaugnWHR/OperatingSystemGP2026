@@ -14,12 +14,13 @@ Requires Python 3.8+, no third-party packages.
     python main.py --scenario fragmentation --memory-map   # watch memory holes form
     python main.py --scenario fragmentation --compact      # compaction fixes fragmentation
     python main.py --scenario placement --compare-memory   # first/best/worst/next fit side by side
+    python main.py --check                          # verify the simulator's rules after every tick
     python -m unittest discover -v                  # tests
 
 ## Who owns what
 | File | Owner | Status in skeleton |
 |---|---|---|
-| process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Juvaugn Foster | done (extend/harden) |
+| process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, checks.py, main.py | Juvaugn Foster | done; `--check` invariant checker added |
 | scheduler.py | Samuel Kelly | FCFS done; **RR + Priority = TODO** |
 | memory.py | Juvaugn Foster | **done**: contiguous allocation, first/best/worst/next fit, coalescing, fragmentation stats, compaction |
 | io_manager.py | Britansia Austin| FIFO device queues work; **extend** |
@@ -41,3 +42,9 @@ arrivals -> admission (memory) -> scheduler.on_tick -> dispatch/preempt -> CPU +
 
 ## Process model
 NEW -> READY -> RUNNING -> (WAITING <-> READY) -> TERMINATED. Bursts alternate CPU, I/O, CPU...
+
+## Before every merge
+Run `python -m unittest discover` and then each scenario with `--check`, e.g.
+`python main.py --scenario io_heavy --check --quiet`. If a module breaks one of the
+simulator's rules, `--check` stops at the first bad tick and names the rule and the
+process (the rules are listed at the top of `rcos/checks.py`).

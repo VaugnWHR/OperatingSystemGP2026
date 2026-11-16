@@ -143,6 +143,12 @@ class IOManager(ABC):
     def busy_ticks(self) -> Dict[str, int]:
         """Total ticks each device spent serving a request (for utilisation)."""
 
+    def held_pids(self) -> Optional[List[int]]:
+        """Optional: PIDs of every process queued at or being served by a device.
+        Used by --check.  Return None (the default) if your design cannot list them;
+        the checker then skips the WAITING-state check."""
+        return None
+
 
 # ------------------------------------------------------------------ PowerManager
 class PowerManager(ABC):

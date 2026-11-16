@@ -137,6 +137,10 @@ class Process:
         self.burst_index += 1
         return self.burst_index < len(self.bursts)
 
+    def time_accounted(self, now: int) -> int:
+        """Ticks booked to states so far, counting the current state up to `now`."""
+        return sum(self.time_in_state.values()) + (now - self._state_entered)
+
     # -------------------------------------------------------- state management
     def transition(self, new_state: ProcessState, now: int) -> ProcessState:
         """Validate and apply a state change, updating time-in-state accounting.
