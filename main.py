@@ -36,6 +36,8 @@ def parse_args(argv=None):
                    help="log a map of memory after every allocate/free")
     p.add_argument("--compare-memory", action="store_true",
                    help="run the scenario once per placement strategy and print a comparison")
+    p.add_argument("--compare-schedulers", action="store_true",
+                   help="run the scenario with FCFS, Round Robin and Priority scheduling")
     p.add_argument("--quantum", type=int, default=3, help="Round Robin time quantum (ticks)")
     p.add_argument("--battery", type=float, default=None, help="battery capacity (enables power model)")
     p.add_argument("--aging", type=int, default=0, help="priority aging interval (0 = off)")
@@ -83,11 +85,34 @@ def compare_memory(args) -> str:
     return "\n".join(lines)
 
 
+def compare_schedulers(args) -> str:
+    """Run the same workload under every mandatory CPU scheduling algorithm."""
+    lines = [f"=== CPU SCHEDULER COMPARISON [{args.scenario_file or args.scenario}, "
+             f"{args.memory}KB] ===",
+             f"{'Scheduler':<12}{'Done':>6}{'Time':>7}{'AvgWT':>8}{'AvgTAT':>9}"
+             f"{'AvgRT':>8}{'Throughput':>12}{'CPU':>7}{'Switches':>10}"]
+    for scheduler in ("fcfs", "rr", "priority"):
+        _sim, report = run_once(args, scheduler=scheduler, log_to_console=False,
+                                show_memory_map=False)
+        label = {"fcfs": "FCFS", "rr": "Round Robin", "priority": "Priority"}[scheduler]
+        lines.append(f"{label:<12}{report.completed:>6}{report.total_time:>7}"
+                     f"{report.avg_waiting:>8.2f}{report.avg_turnaround:>9.2f}"
+                     f"{report.avg_response:>8.2f}{report.throughput:>12.3f}"
+                     f"{report.cpu_utilization:>6.1f}%{report.context_switches:>10}")
+    lines += ["",
+              "WT = course waiting time (turnaround - CPU burst)",
+              "TAT = turnaround time | RT = response time"]
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     try:
         if args.compare_memory:
             print(compare_memory(args))
+            return 0
+        if args.compare_schedulers:
+            print(compare_schedulers(args))
             return 0
         sim, report = run_once(args)
     except NotImplementedError as exc:

@@ -8,7 +8,8 @@ Requires Python 3.8+, no third-party packages.
 
 ## Run
     python main.py                                  # basic scenario, FCFS
-    python main.py --scheduler rr --quantum 2       # once Member 2 finishes RR
+    python main.py --scheduler rr --quantum 2
+    python main.py --compare-schedulers             # compare FCFS, RR and Priority
     python main.py --scenario memory_pressure --quiet
     python main.py --battery 40                     # power model (bonus)
     python main.py --scenario fragmentation --memory-map   # watch memory holes form
@@ -20,7 +21,7 @@ Requires Python 3.8+, no third-party packages.
 | File | Owner | Status in skeleton |
 |---|---|---|
 | process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Juvaugn Foster | done (extend/harden) |
-| scheduler.py | Samuel Kelly | FCFS done; **RR + Priority = TODO** |
+| scheduler.py | Samuel Kelly | **FCFS, Round Robin and Priority scheduling complete** |
 | memory.py | Juvaugn Foster | **done**: contiguous allocation, first/best/worst/next fit, coalescing, fragmentation stats, compaction |
 | io_manager.py | Britansia Austin| FIFO device queues work; **extend** |
 | metrics.py, scenarios.py, tests/, power.py | Member 5 | baseline works; **extend** + bonus |

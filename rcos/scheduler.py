@@ -12,7 +12,7 @@ Rules of the contract (see interfaces.py):
 from __future__ import annotations
 
 from collections import deque
-from typing import Deque, List, Optional
+from typing import Deque, Dict, List, Optional
 
 from .config import SystemConfig
 from .errors import ConfigError
@@ -38,36 +38,101 @@ class FCFSScheduler(Scheduler):
 
 
 class RoundRobinScheduler(Scheduler):
-    """TODO (Member 2): time-sliced FCFS.
-    Needs: add() to the tail; select_next() pops the head; should_preempt() returns True
-    when quantum_used >= quantum AND someone else is waiting; a preempted process is
-    re-added (to the tail) by the engine via add()."""
+    """Time-sliced FCFS."""
     name = "RR"
 
     def __init__(self, time_quantum: int) -> None:
+        if time_quantum <= 0:
+            raise ConfigError("time quantum must be greater than zero")
         self.time_quantum = time_quantum
+        self._queue: Deque[Process] = deque()
 
-    def add(self, proc, now): raise NotImplementedError("TODO Member 2: Round Robin")
-    def select_next(self, now, resources): raise NotImplementedError("TODO Member 2: Round Robin")
-    def should_preempt(self, running, now, quantum_used): raise NotImplementedError("TODO Member 2")
-    def ready_pids(self): raise NotImplementedError("TODO Member 2: Round Robin")
+    def add(self, proc: Process, now: int) -> None:
+        self._queue.append(proc)
+
+    def select_next(self, _now: int, _resources: ResourceSnapshot) -> Optional[Process]:
+        return self._queue.popleft() if self._queue else None
+
+    def should_preempt(self, _running: Process, _now: int, quantum_used: int) -> bool:
+        return quantum_used >= self.time_quantum and bool(self._queue)
+
+    def ready_pids(self) -> List[int]:
+        return [proc.pid for proc in self._queue]
 
 
 class PriorityScheduler(Scheduler):
-    """TODO (Member 2): priority scheduling (lower number = higher priority).
-    Decide preemptive vs non-preemptive and document why.  Break ties by arrival to READY.
-    Use on_tick() to implement aging (raise priority of long-waiting processes) to show
-    how starvation is prevented - this is the project's 'priority management' feature."""
+    """Preemptive priority scheduling with optional aging.
+
+    Lower priority numbers are better.  Processes with the same effective priority
+    are ordered by the tick and sequence in which they became READY.
+    """
     name = "PRIORITY"
 
     def __init__(self, preemptive: bool = True, aging_interval: int = 0) -> None:
+        if aging_interval < 0:
+            raise ConfigError("priority aging interval must not be negative")
         self.preemptive = preemptive
         self.aging_interval = aging_interval
+        self._queue: List[tuple[Process, int, int]] = []
+        self._sequence = 0
+        self._waiting_since: Dict[int, int] = {}
+        self._aging_steps: Dict[int, int] = {}
 
-    def add(self, proc, now): raise NotImplementedError("TODO Member 2: Priority")
-    def select_next(self, now, resources): raise NotImplementedError("TODO Member 2: Priority")
-    def should_preempt(self, running, now, quantum_used): raise NotImplementedError("TODO Member 2")
-    def ready_pids(self): raise NotImplementedError("TODO Member 2: Priority")
+    def _effective_priority(self, proc: Process) -> int:
+        bonus = self._aging_steps.get(proc.pid, 0)
+        return max(0, proc.priority - bonus)
+
+    def add(self, proc: Process, now: int) -> None:
+        self._aging_steps.setdefault(proc.pid, 0)
+        self._waiting_since[proc.pid] = now
+        self._sequence += 1
+        self._queue.append((proc, now, self._sequence))
+
+    def on_tick(self, now: int) -> None:
+        if self.aging_interval == 0:
+            return
+        for proc in {entry[0].pid: entry[0] for entry in self._queue}.values():
+            waiting_since = self._waiting_since.get(proc.pid, now)
+            elapsed = now - waiting_since
+            expected_steps = elapsed // self.aging_interval
+            bonus = self._aging_steps.get(proc.pid, 0)
+            if bonus < expected_steps:
+                self._aging_steps[proc.pid] = max(0, expected_steps)
+
+    def select_next(self, _now: int, _resources: ResourceSnapshot) -> Optional[Process]:
+        if not self._queue:
+            return None
+        index = min(
+            range(len(self._queue)),
+            key=lambda i: (
+                self._effective_priority(self._queue[i][0]),
+                self._queue[i][1],
+                self._queue[i][2],
+            ),
+        )
+        proc, _, _ = self._queue.pop(index)
+        self._waiting_since.pop(proc.pid, None)
+        return proc
+
+    def should_preempt(self, running: Process, _now: int, _quantum_used: int) -> bool:
+        if not self.preemptive or not self._queue:
+            return False
+        highest_waiting_priority = min(
+            self._effective_priority(proc)
+            for proc, _ready_time, _sequence in self._queue
+        )
+        return highest_waiting_priority < self._effective_priority(running)
+
+    def ready_pids(self) -> List[int]:
+        ordered = sorted(
+            self._queue,
+            key=lambda entry: (
+                self._effective_priority(entry[0]),
+                entry[1],
+                entry[2],
+            ),
+        )
+        return [proc.pid for proc, _ready_time, _sequence in ordered]
 
 
 def create_scheduler(name: str, config: SystemConfig) -> Scheduler:
