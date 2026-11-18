@@ -1,10 +1,10 @@
-"""CPU scheduler tests (OWNER: Member 2)."""
+"""Tests for CPU scheduling (Member 2: Samuel Kelly), including the course tutorial tables."""
 import unittest
 
 from rcos.config import SystemConfig
 from rcos.engine import build_simulator
 from rcos.errors import ConfigError
-from rcos.process import Process, cpu_burst
+from rcos.process import Process, cpu_burst, io_burst
 from rcos.scheduler import PriorityScheduler, RoundRobinScheduler
 
 
@@ -97,6 +97,20 @@ class PrioritySchedulerTests(unittest.TestCase):
         scheduler.on_tick(4)
         self.assertEqual(scheduler._effective_priority(low_priority), 3)
 
+    def test_aging_boost_resets_on_new_cpu_burst(self):
+        # "background" ages while waiting; after its I/O it must not outrank the urgent "alarm"
+        sim = build_simulator(SystemConfig(scheduler="priority", priority_aging_interval=2,
+                                           log_to_console=False))
+        sim.load_processes([
+            Process(1, "urgent_a", 0, 1, 16, [cpu_burst(6)]),
+            Process(2, "urgent_b", 0, 1, 16, [cpu_burst(6)]),
+            Process(3, "background", 0, 5, 16, [cpu_burst(1), io_burst("FLASH", 2), cpu_burst(8)]),
+            Process(4, "alarm", 15, 0, 16, [cpu_burst(2)]),
+        ])
+        report = sim.run()
+        alarm = next(r for r in report.per_process if r.name == "alarm")
+        self.assertEqual(alarm.response, 0)
+
     def test_priority_engine_run_completes_all_processes(self):
         sim = build_simulator(SystemConfig(scheduler="priority",
                                            priority_aging_interval=3,
@@ -108,6 +122,33 @@ class PrioritySchedulerTests(unittest.TestCase):
         ])
         report = sim.run()
         self.assertEqual(report.completed, 3)
+
+
+class CourseTutorialTests(unittest.TestCase):
+    """CPU Scheduling tutorial (P1-P5): the published TT / WT / RT tables."""
+    DATA = [(1, 0, 50, 4), (2, 20, 20, 1), (3, 40, 100, 3), (4, 60, 40, 2), (5, 70, 30, 3)]
+
+    def run_tutorial(self, scheduler="rr", quantum=30, preemptive=None):
+        sim = build_simulator(SystemConfig(scheduler=scheduler, time_quantum=quantum,
+                                           log_to_console=False))
+        if preemptive is not None:
+            sim.scheduler = PriorityScheduler(preemptive=preemptive)
+        sim.load_processes([Process(pid, f"P{pid}", arrival, priority, 10, [cpu_burst(burst)])
+                            for pid, arrival, burst, priority in self.DATA])
+        report = sim.run()
+        turnarounds = [r.turnaround for r in report.per_process]
+        return turnarounds, (report.avg_turnaround, report.avg_waiting, report.avg_response)
+
+    def test_round_robin_matches_tutorial(self):
+        self.assertEqual(self.run_tutorial("rr", 30), ([70, 30, 200, 140, 90], (106, 58, 28)))
+
+    def test_preemptive_priority_matches_tutorial(self):
+        self.assertEqual(self.run_tutorial("priority", preemptive=True),
+                         ([240, 20, 140, 40, 140], (116, 68, 22)))
+
+    def test_non_preemptive_priority_matches_tutorial(self):
+        self.assertEqual(self.run_tutorial("priority", preemptive=False),
+                         ([50, 50, 170, 50, 170], (98, 50, 50)))
 
 
 if __name__ == "__main__":

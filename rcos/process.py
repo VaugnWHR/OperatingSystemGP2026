@@ -1,20 +1,12 @@
-"""Process model: states, bursts and the Process Control Block (OWNER: Member 1).
+"""Processes: the 5 states, CPU/I-O bursts and the Process Control Block (Member 1: Juvaugn).
 
-5-STATE MODEL used by the whole project:
+    NEW --admit--> READY --dispatch--> RUNNING --last burst done--> TERMINATED
+                     ^  <---preempt------|  |
+                     |                      +--I/O request--> WAITING
+                     +-------------I/O complete------------------+
 
-    NEW ──admit (memory granted)──> READY ──dispatch──> RUNNING ──CPU burst done──> TERMINATED
-                                      ^  <──preempt────────┤  │
-                                      │                    │  └──I/O request──> WAITING
-                                      └────I/O complete────┴──────────────────────┘
-
-  NEW        arrived, but not yet given memory (waiting in the job queue)
-  READY      in memory, waiting for the CPU (the scheduler's ready queue)
-  RUNNING    currently on the CPU (only ONE process at a time)
-  WAITING    blocked on an I/O device (queued or being served)
-  TERMINATED finished, rejected, or aborted (memory already freed)
-
-A process is a list of bursts that must ALTERNATE and START WITH CPU:
-    CPU(4) -> IO(FLASH,3) -> CPU(2)
+NEW = waiting for memory, READY = waiting for the CPU, RUNNING = on the CPU (one at a time),
+WAITING = blocked on an I/O device. Bursts alternate CPU, I/O, CPU... starting with CPU.
 """
 from __future__ import annotations
 
@@ -25,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from .errors import ConfigError, InvalidStateTransition
 
 
+# ---- States and the transitions the model allows ----
 class ProcessState(Enum):
     NEW = "NEW"
     READY = "READY"
@@ -42,6 +35,7 @@ ALLOWED_TRANSITIONS: Dict[ProcessState, set] = {
 }
 
 
+# ---- Bursts: one stretch of CPU work or I/O; `remaining` counts down ----
 class BurstType(Enum):
     CPU = "CPU"
     IO = "IO"
@@ -49,7 +43,6 @@ class BurstType(Enum):
 
 @dataclass
 class Burst:
-    """One CPU or I/O burst.  `remaining` counts down as the burst is served."""
     kind: BurstType
     duration: int
     device: Optional[str] = None
@@ -73,18 +66,18 @@ def io_burst(device: str, duration: int) -> Burst:
     return Burst(BurstType.IO, duration, device)
 
 
-@dataclass(eq=False)  # identity equality: two processes are never "equal"
+# ---- Process Control Block: the process's details plus timing for the metrics ----
+@dataclass(eq=False)  # two processes are never "equal", even with the same fields
 class Process:
-    """Process Control Block (PCB) + the accounting the metrics need."""
     pid: int
     name: str
     arrival_time: int
-    priority: int                       # LOWER number = HIGHER priority
+    priority: int                       # lower number = higher priority
     memory_kb: int
     bursts: List[Burst]
-    power_cost_per_tick: float = 1.0    # used by the power-aware bonus
+    power_cost_per_tick: float = 1.0    # used by the power model
 
-    # ---- runtime fields (managed by the engine; do not set from outside) ----
+    # Set by the engine while the simulation runs
     state: ProcessState = field(default=ProcessState.NEW, init=False)
     burst_index: int = field(default=0, init=False)
     first_run_time: Optional[int] = field(default=None, init=False)
@@ -95,6 +88,7 @@ class Process:
         default_factory=lambda: {s: 0 for s in ProcessState}, init=False, repr=False)
     _state_entered: int = field(default=0, init=False, repr=False)
 
+    # ---- Validation: reject impossible process definitions ----
     def __post_init__(self) -> None:
         if not self.name:
             raise ConfigError("process needs a name")
@@ -114,7 +108,7 @@ class Process:
                     f"(burst {i} is {burst.kind.value})")
         self._state_entered = self.arrival_time
 
-    # ------------------------------------------------------------------ helpers
+    # ---- Burst helpers ----
     @property
     def label(self) -> str:
         return f"P{self.pid:02d}({self.name})"
@@ -129,18 +123,19 @@ class Process:
 
     @property
     def remaining_cpu_demand(self) -> int:
-        """Total CPU ticks still needed (useful for SJF-style / resource-aware schedulers)."""
         return sum(b.remaining for b in self.bursts[self.burst_index:] if b.kind is BurstType.CPU)
 
     def advance_burst(self) -> bool:
-        """Move to the next burst.  Returns True if another burst exists."""
+        """Move to the next burst; False if there are none left."""
         self.burst_index += 1
         return self.burst_index < len(self.bursts)
 
-    # -------------------------------------------------------- state management
+    def time_accounted(self, now: int) -> int:
+        """Ticks booked to states so far, including the current state up to `now`."""
+        return sum(self.time_in_state.values()) + (now - self._state_entered)
+
+    # ---- State change: allowed moves only, and record time spent in the old state ----
     def transition(self, new_state: ProcessState, now: int) -> ProcessState:
-        """Validate and apply a state change, updating time-in-state accounting.
-        Returns the previous state.  Raises InvalidStateTransition if illegal."""
         if new_state not in ALLOWED_TRANSITIONS[self.state]:
             raise InvalidStateTransition(
                 f"{self.label}: {self.state.value} -> {new_state.value} is not allowed")
@@ -157,13 +152,11 @@ class Process:
             self.finish_time = now
         return old
 
-    # ---------------------------------------------------------------- loading
+    # ---- Loading from a JSON scenario file ----
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Process":
-        """Build a Process from a JSON-style dict:
-        {"pid":1,"name":"sensor_read","arrival":0,"priority":2,"memory_kb":128,
-         "power_cost":1.5,
-         "bursts":[{"type":"CPU","time":4},{"type":"IO","device":"SENSOR","time":3}]}"""
+        """e.g. {"pid": 1, "name": "sensor_read", "arrival": 0, "priority": 2, "memory_kb": 128,
+        "bursts": [{"type": "CPU", "time": 4}, {"type": "IO", "device": "SENSOR", "time": 3}]}"""
         try:
             bursts = [Burst(BurstType(b["type"].upper()), int(b["time"]), b.get("device"))
                       for b in data["bursts"]]

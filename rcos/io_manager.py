@@ -1,12 +1,8 @@
-"""I/O devices and queues (OWNER: Member 4).
+"""I/O devices (owner: Member 4, Britansia Austin).
 
-SimpleIOManager: one FIFO queue per device, one request served at a time per
-device, each device works in parallel with the CPU.  Member 4 extends it, e.g.
-different service speeds, request priorities, device-contention statistics
-(queue length over time), an "interrupt"-style completion log.
-
-Timing contract: a request submitted at the end of tick t starts being served in
-tick t+1; after `duration` ticks of service it is returned by advance().
+Each device has its own first-come-first-served queue and serves one request at a
+time, in parallel with the CPU. A request made at the end of tick t starts in tick
+t+1 and finishes after its duration; the engine then moves the process back to READY.
 """
 from __future__ import annotations
 
@@ -26,6 +22,7 @@ class SimpleIOManager(IOManager):
         self._current: Dict[str, Optional[Process]] = {d: None for d in self.devices}
         self._busy: Dict[str, int] = {d: 0 for d in self.devices}
 
+    # ---- Submit: add a process's I/O request to its device's queue ----
     def submit(self, proc: Process, now: int) -> None:
         burst = proc.current_burst
         if burst is None or burst.kind is not BurstType.IO:
@@ -37,10 +34,11 @@ class SimpleIOManager(IOManager):
                       f"REQUEST {burst.device} for {burst.duration} ticks "
                       f"(queue length now {self.queue_lengths()[burst.device]})", proc.pid)
 
+    # ---- Advance: every device serves its current request for one tick ----
     def advance(self, now: int) -> List[Process]:
         finished: List[Process] = []
         for device in self.devices:
-            if self._current[device] is None and self._queues[device]:
+            if self._current[device] is None and self._queues[device]:   # device free: start next
                 self._current[device] = self._queues[device].popleft()
                 self.log.emit(now, Category.IO, f"START {device}", self._current[device].pid)
             proc = self._current[device]
@@ -48,11 +46,16 @@ class SimpleIOManager(IOManager):
                 continue
             self._busy[device] += 1
             proc.current_burst.remaining -= 1
-            if proc.current_burst.remaining == 0:
+            if proc.current_burst.remaining == 0:                       # done: like an interrupt
                 self._current[device] = None
                 finished.append(proc)
                 self.log.emit(now + 1, Category.IO, f"COMPLETE {device}", proc.pid)
         return finished
+
+    # ---- Status: who is waiting, queue lengths, busy time ----
+    def held_pids(self) -> List[int]:
+        pids = [p.pid for d in self.devices for p in self._queues[d]]
+        return pids + [p.pid for p in self._current.values() if p is not None]
 
     def queue_lengths(self) -> Dict[str, int]:
         return {d: len(self._queues[d]) + (1 if self._current[d] is not None else 0)

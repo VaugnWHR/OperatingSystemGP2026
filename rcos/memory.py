@@ -1,36 +1,12 @@
-"""Contiguous memory allocation with a free list (OWNER: Juvaugn, Member 3 role).
+"""Memory allocation (Member 3 role: Juvaugn).
 
-THE MODEL
-  Memory is one block of `total_kb` KB, with addresses 0 to total_kb - 1.
-  Each process gets ONE contiguous block (no paging: small devices usually have
-  no MMU, so they cannot use virtual memory).
-  Free space is a list of HOLES, each (start, size), kept sorted by address.
-
-ALLOCATING (the placement strategy picks which hole to use)
-  first fit - the first hole that is big enough, scanning from address 0
-  best fit  - the smallest hole that is big enough (smallest leftover)
-  worst fit - the largest hole (biggest leftover)
-  next fit  - like first fit, but the scan starts where the last allocation ended
-  The chosen hole is SPLIT: the process takes the front part and the rest
-  stays behind as a smaller hole.
-
-FREEING
-  The block becomes a hole again and is COALESCED (merged) with a hole that sits
-  directly before or after it, so neighbouring gaps join into one bigger gap.
-
-WHEN A REQUEST CANNOT BE MET, allocate() returns False (it never raises):
-  * not enough free memory in total            -> an ordinary shortage
-  * enough in total, but no single hole fits   -> EXTERNAL FRAGMENTATION
-  With compaction turned on, the second case triggers COMPACTION: every block
-  slides down towards address 0, so all free space becomes one hole at the top,
-  and the request is tried again.
-  Simplification: compaction costs no simulated time here. A real OS would spend
-  CPU time copying the memory, which is why compaction is used sparingly.
-
-CONTRACT (see interfaces.MemoryManager)
-  allocate() returns False for an ordinary failure; free() returns the KB freed;
-  ResourceError is raised only when the module is used wrongly (a size of 0,
-  allocating twice for one process, freeing memory that was never allocated).
+Contiguous allocation with dynamic partitions: each process gets one unbroken block
+(small devices usually have no MMU, so no paging). Free space is a sorted list of holes.
+  allocate: the strategy (first, best, worst or next fit) picks a hole, which is split
+  free:     the block becomes a hole and merges with any hole touching it (coalescing)
+  failure:  allocate() returns False; if enough is free but no hole fits, that is
+            external fragmentation, and optional compaction slides blocks together
+            (compaction is free here; a real OS pays CPU time to copy memory)
 """
 from __future__ import annotations
 
@@ -44,28 +20,28 @@ from .eventlog import Category, EventLog
 from .interfaces import MemoryManager
 
 
+# ---- Region: a run of addresses (a hole or an allocated block) ----
 @dataclass(frozen=True, order=True)
 class Region:
-    """A run of memory: addresses start .. start + size - 1."""
     start: int
     size: int
 
     @property
     def end(self) -> int:
-        """First address AFTER the region (exclusive)."""
+        """First address after the region."""
         return self.start + self.size
 
     def label(self) -> str:
         return f"[{self.start}-{self.end - 1}]"
 
 
+# ---- Stats: counters for the end-of-run memory summary ----
 @dataclass
 class MemoryStats:
-    """Counters for the end-of-run summary."""
     allocations: int = 0
     frees: int = 0
-    failed_attempts: int = 0                                    # includes retries every tick
-    delayed_pids: Set[int] = field(default_factory=set)         # ever had to wait for memory
+    failed_attempts: int = 0                                    # includes every-tick retries
+    delayed_pids: Set[int] = field(default_factory=set)         # had to wait for memory
     fragmentation_pids: Set[int] = field(default_factory=set)   # waited although enough was free
     compactions: int = 0
     kb_moved: int = 0
@@ -74,8 +50,6 @@ class MemoryStats:
 
 
 class ContiguousMemoryManager(MemoryManager):
-    """Variable-size contiguous allocation over a sorted free list (see module docstring)."""
-
     def __init__(self, total_kb: int, strategy: str = "first", compaction: bool = False,
                  log: Optional[EventLog] = None, show_map: bool = False) -> None:
         super().__init__(total_kb, log)
@@ -85,12 +59,12 @@ class ContiguousMemoryManager(MemoryManager):
         self.strategy = strategy
         self.compaction = compaction
         self.show_map = show_map
-        self._holes: List[Region] = [Region(0, total_kb)]   # sorted by start address
-        self._blocks: Dict[int, Region] = {}                 # pid -> allocated region
-        self._next_start = 0                                 # next fit's roving pointer
+        self._holes: List[Region] = [Region(0, total_kb)]   # sorted by address
+        self._blocks: Dict[int, Region] = {}                 # pid -> its block
+        self._next_start = 0                                 # where next fit resumes
         self.stats = MemoryStats()
 
-    # ------------------------------------------------------------- allocate
+    # ---- Allocate: find a hole, compact if fragmentation blocks the request, split ----
     def allocate(self, pid: int, size_kb: int, now: int) -> bool:
         if size_kb <= 0:
             raise ResourceError(f"invalid allocation size {size_kb}KB for pid {pid}")
@@ -111,9 +85,9 @@ class ContiguousMemoryManager(MemoryManager):
 
         hole = self._holes[index]
         block = Region(hole.start, size_kb)
-        if hole.size == size_kb:                             # exact fit: the hole disappears
+        if hole.size == size_kb:                             # exact fit: hole disappears
             del self._holes[index]
-        else:                                                # split: the leftover stays a hole
+        else:                                                # split: leftover stays a hole
             self._holes[index] = Region(hole.start + size_kb, hole.size - size_kb)
         self._blocks[pid] = block
         self._next_start = block.end
@@ -124,8 +98,8 @@ class ContiguousMemoryManager(MemoryManager):
         self._after_change(now)
         return True
 
+    # ---- Placement strategies: which hole to use (None = nothing fits) ----
     def _find_hole(self, size_kb: int) -> Optional[int]:
-        """Return the index of the hole the strategy picks, or None if no hole fits."""
         fits = [i for i, hole in enumerate(self._holes) if hole.size >= size_kb]
         if not fits:
             return None
@@ -135,13 +109,12 @@ class ContiguousMemoryManager(MemoryManager):
             return min(fits, key=lambda i: (self._holes[i].size, self._holes[i].start))
         if self.strategy == "worst":
             return max(fits, key=lambda i: (self._holes[i].size, -self._holes[i].start))
-        # next fit: the first fitting hole that ends after the pointer, else wrap to the start
-        for i in fits:
+        for i in fits:                                       # next fit: resume after last block
             if self._holes[i].end > self._next_start:
                 return i
-        return fits[0]
+        return fits[0]                                       # ...or wrap around to the start
 
-    # ----------------------------------------------------------------- free
+    # ---- Free: return the block and merge it with neighbouring holes ----
     def free(self, pid: int, now: int) -> int:
         if pid not in self._blocks:
             raise ResourceError(f"pid {pid} has no memory to free")
@@ -156,8 +129,6 @@ class ContiguousMemoryManager(MemoryManager):
         return block.size
 
     def _insert_hole(self, region: Region) -> Region:
-        """Put `region` back in the free list and coalesce it with touching neighbours.
-        Returns the final (possibly merged) hole."""
         index = bisect.bisect_left(self._holes, region)
         self._holes.insert(index, region)
         # merge with the hole AFTER it
@@ -171,9 +142,8 @@ class ContiguousMemoryManager(MemoryManager):
             self._holes[index] = Region(self._holes[index].start, self._holes[index].size + current.size)
         return self._holes[index]
 
-    # ----------------------------------------------------------- compaction
+    # ---- Compaction: slide every block down so all free space is one hole ----
     def _compact(self, now: int, requester: int) -> None:
-        """Slide every block down to address 0 so all free space becomes one hole."""
         address, moved_blocks, moved_kb = 0, 0, 0
         for pid, block in sorted(self._blocks.items(), key=lambda item: item[1].start):
             if block.start != address:
@@ -189,7 +159,7 @@ class ContiguousMemoryManager(MemoryManager):
                       f"COMPACT moved {moved_blocks} block(s), {moved_kb}KB copied; free space is now "
                       f"one {self.free_kb}KB hole", requester)
 
-    # ------------------------------------------------------------ inspection
+    # ---- Read-only views: usage, holes, fragmentation, memory map, summary ----
     @property
     def used_kb(self) -> int:
         return sum(block.size for block in self._blocks.values())
@@ -207,12 +177,12 @@ class ContiguousMemoryManager(MemoryManager):
 
     @property
     def external_fragmentation(self) -> float:
-        """Percent of free memory that is NOT in the largest hole (0 = all free space usable)."""
+        """Percent of free memory outside the largest hole (0 = all of it usable)."""
         free = self.free_kb
         return 0.0 if free == 0 else 100.0 * (1 - self.largest_free_block_kb / free)
 
     def memory_map(self) -> str:
-        """One-line picture of memory, e.g. [0-127 P01] [128-255 free 128KB] [256-511 P03]."""
+        """e.g. [0-127 P01] [128-255 free 128KB] [256-511 P03]"""
         regions = [(block.start, block.end, f"P{pid:02d}") for pid, block in self._blocks.items()]
         regions += [(hole.start, hole.end, f"free {hole.size}KB") for hole in self._holes]
         return " ".join(f"[{start}-{end - 1} {what}]" for start, end, what in sorted(regions))
@@ -229,8 +199,8 @@ class ContiguousMemoryManager(MemoryManager):
             f"Compactions             : {s.compactions} ({s.kb_moved}KB copied)",
         ]
 
+    # ---- Self-check: holes sorted and merged, regions cover memory exactly ----
     def check(self) -> None:
-        """Raise ResourceError if the free list or the block table is inconsistent."""
         for a, b in zip(self._holes, self._holes[1:]):
             if a.start >= b.start:
                 raise ResourceError(f"holes out of order: {a} before {b}")

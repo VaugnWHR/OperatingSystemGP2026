@@ -1,8 +1,7 @@
-"""Central resource manager (OWNER: Member 1).
+"""Resource manager (Member 1: Juvaugn).
 
-Every resource request in the simulator goes through here: CPU, memory, I/O and
-power.  This is the single place that enforces "one process on the CPU", keeps
-track of who holds what, and produces snapshots for the scheduler and metrics.
+The one place that hands out the CPU, memory, I/O devices and power, and keeps
+track of who holds what. Enforces "only one process on the CPU".
 """
 from __future__ import annotations
 
@@ -17,8 +16,8 @@ from .process import BurstType, Process
 
 class AllocResult(Enum):
     GRANTED = "GRANTED"        # process now holds its memory
-    DENIED = "DENIED"          # not enough free memory right now - try again later
-    IMPOSSIBLE = "IMPOSSIBLE"  # can never fit (bigger than total memory) - reject
+    DENIED = "DENIED"          # not enough right now: wait and retry
+    IMPOSSIBLE = "IMPOSSIBLE"  # bigger than all memory: reject
 
 
 class ResourceManager:
@@ -30,9 +29,13 @@ class ResourceManager:
         self.log = log
         self._cpu_owner: Optional[int] = None
         self._holding_memory: Set[int] = set()
-        self._denial_logged: Dict[int, str] = {}   # pid -> reason last logged (no log spam)
+        self._denial_logged: Dict[int, str] = {}   # pid -> last denial reason logged
 
-    # -------------------------------------------------------------------- CPU
+    @property
+    def memory_holders(self) -> frozenset:
+        return frozenset(self._holding_memory)
+
+    # ---- CPU: give it to one process at a time ----
     @property
     def cpu_owner(self) -> Optional[int]:
         return self._cpu_owner
@@ -48,7 +51,7 @@ class ResourceManager:
             raise ResourceError(f"{proc.label} does not hold the CPU (owner: {self._cpu_owner})")
         self._cpu_owner = None
 
-    # ----------------------------------------------------------------- memory
+    # ---- Memory: grant, deny (and say why) or reject a request ----
     def allocate_memory(self, proc: Process, now: int) -> AllocResult:
         if proc.pid in self._holding_memory:
             raise ResourceError(f"{proc.label} already holds memory")
@@ -64,7 +67,7 @@ class ResourceManager:
         free, largest = self.memory.free_kb, self.memory.largest_free_block_kb
         reason = ("external fragmentation: enough free in total, but no single hole fits"
                   if proc.memory_kb <= free else "not enough free memory")
-        if self._denial_logged.get(proc.pid) != reason:      # log once per reason, not every retry
+        if self._denial_logged.get(proc.pid) != reason:      # log once per reason, not every tick
             self._denial_logged[proc.pid] = reason
             self.log.emit(now, Category.MEM,
                           f"DENIED {proc.memory_kb}KB (free {free}KB, largest hole {largest}KB) - "
@@ -72,13 +75,12 @@ class ResourceManager:
         return AllocResult.DENIED
 
     def release_memory(self, proc: Process, now: int) -> int:
-        """Free the process's memory (no-op if it never got any). Returns KB freed."""
         if proc.pid not in self._holding_memory:
             return 0
         self._holding_memory.discard(proc.pid)
         return self.memory.free(proc.pid, now)
 
-    # -------------------------------------------------------------------- I/O
+    # ---- I/O: check the request, then hand it to the device queues ----
     def request_io(self, proc: Process, now: int) -> None:
         burst = proc.current_burst
         if burst is None or burst.kind is not BurstType.IO:
@@ -87,7 +89,7 @@ class ResourceManager:
             raise ResourceError(f"{proc.label} requested unknown device {burst.device!r}")
         self.io.submit(proc, now)
 
-    # --------------------------------------------------------------- snapshot
+    # ---- Snapshot: current state of every resource ----
     def snapshot(self, now: int) -> ResourceSnapshot:
         return ResourceSnapshot(
             time=now,

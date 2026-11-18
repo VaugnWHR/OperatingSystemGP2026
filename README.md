@@ -1,44 +1,64 @@
-# RCOS - Resource-Constrained OS Simulator (CIT3002 Group 5)
+# RCOS: Resource-Constrained OS Simulator (CIT3002, Group 5)
 
-A tick-driven simulator showing how an OS manages **processes, CPU scheduling, memory,
-I/O and priorities** (and optionally **power**) on a resource-constrained IoT/edge-style
-device. Workloads are *simulated* (lists of CPU/I-O bursts) - nothing real is executed.
+A tick-by-tick simulator of how an operating system manages processes, CPU scheduling,
+memory, I/O devices, priorities and (optionally) battery power on a small IoT/edge-style
+device. Workloads are simulated as lists of CPU and I/O bursts; nothing real is executed.
 
-Requires Python 3.8+, no third-party packages.
+Requires Python 3.8 or newer. No extra packages.
 
-## Run
-    python main.py                                  # basic scenario, FCFS
-    python main.py --scheduler rr --quantum 2
-    python main.py --compare-schedulers             # compare FCFS, RR and Priority
-    python main.py --scenario memory_pressure --quiet
-    python main.py --battery 40                     # power model (bonus)
-    python main.py --scenario fragmentation --memory-map   # watch memory holes form
-    python main.py --scenario fragmentation --compact      # compaction fixes fragmentation
-    python main.py --scenario placement --compare-memory   # first/best/worst/next fit side by side
-    python -m unittest discover -v                  # tests
+## Running it
+
+    python main.py                                        basic scenario with FCFS
+    python main.py --scheduler rr --quantum 2             Round Robin
+    python main.py --scheduler priority --aging 3         Priority with aging
+    python main.py --compare-schedulers                   FCFS vs Round Robin vs Priority
+    python main.py --scenario fragmentation --memory-map  watch memory holes form
+    python main.py --scenario fragmentation --compact     compaction fixes fragmentation
+    python main.py --scenario placement --compare-memory  first / best / worst / next fit
+    python main.py --scenario io_heavy                    five processes queue for one device
+    python main.py --battery 40                           battery model
+    python main.py --check --quiet                        verify the simulator's rules every tick
+    python -m unittest discover -v                        all tests
+
+Scenarios: `basic`, `memory_pressure`, `io_heavy`, `fragmentation`, `placement`
+(or your own JSON file with `--scenario-file`). Add `--quiet` to see only the report.
+
+## Required features and where they are
+
+| Feature (assignment brief) | Where |
+|---|---|
+| Process creation | `rcos/process.py` (5-state model, bursts), `rcos/scenarios.py` |
+| Scheduling: FCFS, Round Robin, Priority | `rcos/scheduler.py` |
+| Memory allocation | `rcos/memory.py` (first/best/worst/next fit, coalescing, compaction) |
+| I/O requests | `rcos/io_manager.py` (one queue per device, runs alongside the CPU) |
+| Resource allocation | `rcos/resources.py` (CPU, memory, I/O and power go through here) |
+| Priority management | `rcos/scheduler.py` (preemptive priority with aging) |
+| Metrics and logging | `rcos/metrics.py`, `rcos/eventlog.py` |
+
+The tests reproduce the course's own worked answers: the CPU Scheduling tutorial (FCFS,
+Round Robin with quantum 30, preemptive and non-preemptive priority) and the Lecture
+Notes 06 memory placement example (first, next, best and worst fit).
 
 ## Who owns what
-| File | Owner | Status in skeleton |
+
+| Files | Owner | Status |
 |---|---|---|
-| process.py, config.py, eventlog.py, interfaces.py, resources.py, engine.py, main.py | Juvaugn Foster | done (extend/harden) |
-| scheduler.py | Samuel Kelly | **FCFS, Round Robin and Priority scheduling complete** |
-| memory.py | Juvaugn Foster | **done**: contiguous allocation, first/best/worst/next fit, coalescing, fragmentation stats, compaction |
-| io_manager.py | Britansia Austin| FIFO device queues work; **extend** |
-| metrics.py, scenarios.py, tests/, power.py | Member 5 | baseline works; **extend** + bonus |
+| engine.py, process.py, resources.py, interfaces.py, config.py, eventlog.py, checks.py, main.py | Juvaugn Foster (Member 1) | done |
+| memory.py | Juvaugn Foster (Member 3 role) | done |
+| scheduler.py | Samuel Kelly (Member 2) | done |
+| io_manager.py | Britansia Austin (Member 4) | working FIFO device queues; extensions in progress |
+| metrics.py, scenarios.py, power.py | Member 5 | working baseline |
 
-## Rules for everyone
-1. Time = integer ticks. Memory = KB. **Lower priority number = higher priority.**
-2. Implement the abstract classes in `rcos/interfaces.py`; do not change their signatures
-   without checking with Juvaugn.
-3. Only the engine changes process states (via `Process.transition`). Never set `proc.state` directly.
-4. Log with `log.emit(now, Category.X, message, pid)` - format is fixed (see eventlog.py).
-5. Ordinary failures (no memory) return False; contract violations raise `ResourceError`.
-6. Each module owner adds their own `tests/test_<module>.py`. Run all tests before every push.
-7. Work on your own branch; open a pull request; Juvaugn reviews and merges.
+## How a tick works
 
-## Tick order (see engine.py for the full version)
-arrivals -> admission (memory) -> scheduler.on_tick -> dispatch/preempt -> CPU + I/O work
--> I/O completions -> CPU-burst end (I/O request or terminate).
+Arrivals, then memory admission, then aging, then dispatch (with preemption), then one
+tick of CPU and I/O work, then finished I/O and finished CPU bursts. The full list is at
+the top of `rcos/engine.py`. Process states: NEW, READY, RUNNING, WAITING, TERMINATED.
 
-## Process model
-NEW -> READY -> RUNNING -> (WAITING <-> READY) -> TERMINATED. Bursts alternate CPU, I/O, CPU...
+## Team rules
+
+1. Time is in whole ticks, memory in KB, and a lower priority number means higher priority.
+2. Modules implement the classes in `rcos/interfaces.py`; check with Juvaugn before changing them.
+3. Only the engine changes a process's state.
+4. Work on your own branch and open a pull request. Before merging, run
+   `python -m unittest discover` and each scenario with `--check`.
