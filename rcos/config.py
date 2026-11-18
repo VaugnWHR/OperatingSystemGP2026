@@ -29,6 +29,7 @@ class SystemConfig:
     io_devices: Tuple[str, ...] = ("SENSOR", "FLASH", "RADIO")
     scheduler: str = "fcfs"                          # "fcfs" | "rr" | "priority"
     max_ticks: int = 5000                            # safety stop against infinite runs
+    check_invariants: bool = False                   # --check: verify the rules after every tick
     priority_aging_interval: int = 0                 # 0 = aging off (Member 2 may use)
     battery_capacity: Optional[float] = None         # None = power not modelled (bonus)
     idle_power_cost: float = 0.1                     # energy per idle CPU tick (bonus)

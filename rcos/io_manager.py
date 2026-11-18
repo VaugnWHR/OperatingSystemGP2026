@@ -54,6 +54,10 @@ class SimpleIOManager(IOManager):
                 self.log.emit(now + 1, Category.IO, f"COMPLETE {device}", proc.pid)
         return finished
 
+    def held_pids(self) -> List[int]:
+        pids = [p.pid for d in self.devices for p in self._queues[d]]
+        return pids + [p.pid for p in self._current.values() if p is not None]
+
     def queue_lengths(self) -> Dict[str, int]:
         return {d: len(self._queues[d]) + (1 if self._current[d] is not None else 0)
                 for d in self.devices}

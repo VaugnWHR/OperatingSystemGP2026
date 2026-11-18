@@ -18,6 +18,8 @@ TICK ORDER (one tick = the interval [t, t+1)):
    7. CPU burst done?   next burst is I/O -> RUNNING -> WAITING + I/O request
                         no more bursts    -> RUNNING -> TERMINATED, memory freed
 
+   8. --check only:     check_invariants() verifies every rule in rcos/checks.py
+
 Tie-break convention: processes finishing I/O at t+1 join the ready queue before a
 process preempted at the start of the next tick.
 """
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional
 
+from .checks import check_invariants
 from .config import SystemConfig
 from .errors import ConfigError, SimulationError
 from .eventlog import Category, EventLog
@@ -53,6 +56,7 @@ class Simulator:
         self._running: Optional[Process] = None
         self._quantum_used = 0
         self._last_pid: Optional[int] = None
+        self.invariant_checks = 0              # ticks verified by --check
 
     # ------------------------------------------------------------------ setup
     def load_processes(self, processes: Iterable[Process]) -> None:
@@ -89,6 +93,9 @@ class Simulator:
                 self._abort_all(self.clock, "aborted: power exhausted")
                 break
             self._tick()
+        if self.config.check_invariants:
+            self.log.emit(self.clock, Category.SYSTEM,
+                          f"CHECK all invariants held after each of {self.invariant_checks} ticks")
         self.log.emit(self.clock, Category.SYSTEM, f"END after {self.clock} ticks")
         return self.metrics.build_report(
             self.processes.values(), self.clock, self.resources.io.busy_ticks(),
@@ -114,6 +121,9 @@ class Simulator:
         if ran is not None:
             self._on_cpu_tick_end(ran, end)
         self.clock = end
+        if self.config.check_invariants:          # --check: verify every rule (rcos/checks.py)
+            check_invariants(self)
+            self.invariant_checks += 1
 
     def _handle_arrivals(self, now: int) -> None:
         while self._incoming and self._incoming[0].arrival_time <= now:

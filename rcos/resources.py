@@ -32,6 +32,11 @@ class ResourceManager:
         self._holding_memory: Set[int] = set()
         self._denial_logged: Dict[int, str] = {}   # pid -> reason last logged (no log spam)
 
+    @property
+    def memory_holders(self) -> frozenset:
+        """PIDs that currently hold memory (read-only; used by the invariant checker)."""
+        return frozenset(self._holding_memory)
+
     # -------------------------------------------------------------------- CPU
     @property
     def cpu_owner(self) -> Optional[int]:

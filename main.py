@@ -6,6 +6,7 @@ Examples:
     python main.py --scheduler rr --quantum 2 --quiet
     python main.py --scenario-file my_scenario.json --log-csv run.csv
     python main.py --battery 40                      # enable the power model (bonus)
+    python main.py --check                           # verify the simulator's rules every tick
 
 Memory examples:
     python main.py --scenario fragmentation --memory-map          # watch holes appear
@@ -38,6 +39,8 @@ def parse_args(argv=None):
                    help="run the scenario once per placement strategy and print a comparison")
     p.add_argument("--compare-schedulers", action="store_true",
                    help="run the scenario with FCFS, Round Robin and Priority scheduling")
+    p.add_argument("--check", action="store_true",
+                   help="verify the simulator's rules (invariants) after every tick")
     p.add_argument("--quantum", type=int, default=3, help="Round Robin time quantum (ticks)")
     p.add_argument("--battery", type=float, default=None, help="battery capacity (enables power model)")
     p.add_argument("--aging", type=int, default=0, help="priority aging interval (0 = off)")
@@ -52,7 +55,7 @@ def run_once(args, **overrides):
                     memory_compaction=args.compact, show_memory_map=args.memory_map,
                     time_quantum=args.quantum, scheduler=args.scheduler,
                     battery_capacity=args.battery, priority_aging_interval=args.aging,
-                    log_to_console=not args.quiet)
+                    log_to_console=not args.quiet, check_invariants=args.check)
     settings.update(overrides)
     sim = build_simulator(SystemConfig(**settings))
     sim.load_processes(load_scenario(args.scenario_file) if args.scenario_file
@@ -125,6 +128,8 @@ def main(argv=None) -> int:
         sim.log.to_csv(args.log_csv)
     print()
     print(report.format())
+    if args.check:
+        print(f"Invariant checks        : all rules held after each of {sim.invariant_checks} ticks")
     memory_lines = sim.resources.memory.summary_lines()
     if memory_lines:
         print()

@@ -17,3 +17,7 @@ class InvalidStateTransition(SimulationError):
 class ResourceError(SimulationError):
     """A resource-manager contract was violated (e.g. CPU double-assigned,
     freeing memory that was never allocated, unknown I/O device)."""
+
+
+class InvariantError(SimulationError):
+    """The --check option found the simulator in an impossible state (a bug)."""
