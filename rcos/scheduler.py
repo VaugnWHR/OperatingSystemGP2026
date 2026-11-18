@@ -83,7 +83,11 @@ class PriorityScheduler(Scheduler):
         return max(0, proc.priority - bonus)
 
     def add(self, proc: Process, now: int) -> None:
-        self._aging_steps.setdefault(proc.pid, 0)
+        burst = proc.current_burst
+        if burst is None or burst.remaining == burst.duration:
+            self._aging_steps[proc.pid] = 0          # new CPU burst: earlier aging boost is used up
+        else:
+            self._aging_steps.setdefault(proc.pid, 0)  # preempted mid-burst: keep the boost
         self._waiting_since[proc.pid] = now
         self._sequence += 1
         self._queue.append((proc, now, self._sequence))
