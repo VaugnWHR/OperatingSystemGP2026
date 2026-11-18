@@ -1,18 +1,11 @@
-"""Command-line entry point.
+"""Command line for the simulator. Common runs:
 
-Examples:
-    python main.py                                   # basic scenario, FCFS
-    python main.py --scenario memory_pressure --memory 512
-    python main.py --scheduler rr --quantum 2 --quiet
-    python main.py --scenario-file my_scenario.json --log-csv run.csv
-    python main.py --battery 40                      # enable the power model (bonus)
-    python main.py --check                           # verify the simulator's rules every tick
-
-Memory examples:
-    python main.py --scenario fragmentation --memory-map          # watch holes appear
-    python main.py --scenario fragmentation --compact             # compaction fixes it
-    python main.py --memory-strategy best --quiet                 # change placement strategy
-    python main.py --scenario fragmentation --compare-memory      # every strategy side by side
+    python main.py                                    basic scenario, FCFS
+    python main.py --scheduler rr --quantum 2         Round Robin (or: priority --aging 3)
+    python main.py --compare-schedulers               FCFS vs Round Robin vs Priority
+    python main.py --scenario fragmentation --compact memory fragmentation and compaction
+    python main.py --scenario placement --compare-memory   first/best/worst/next fit
+    python main.py --check --quiet                    verify the rules, report only
 """
 import argparse
 import sys
@@ -23,6 +16,7 @@ from rcos.errors import SimulationError
 from rcos.scenarios import SCENARIOS, get_scenario, load_scenario
 
 
+# ---- Options: every command-line flag ----
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="Resource-Constrained OS Simulator")
     p.add_argument("--scheduler", default="fcfs", choices=["fcfs", "rr", "priority"])
@@ -49,8 +43,9 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
+# ---- One run: build the simulator from the flags and run the scenario ----
 def run_once(args, **overrides):
-    """Build, load and run one simulation.  `overrides` replace SystemConfig fields."""
+    """`overrides` replace individual settings (used by the comparisons)."""
     settings = dict(total_memory_kb=args.memory, memory_strategy=args.memory_strategy,
                     memory_compaction=args.compact, show_memory_map=args.memory_map,
                     time_quantum=args.quantum, scheduler=args.scheduler,
@@ -63,6 +58,7 @@ def run_once(args, **overrides):
     return sim, sim.run()
 
 
+# ---- Comparisons: same workload, different strategy, one table ----
 def compare_memory(args) -> str:
     """Run the same workload under each placement strategy (compaction off, then
     first fit with compaction) and return a comparison table."""
@@ -108,6 +104,7 @@ def compare_schedulers(args) -> str:
     return "\n".join(lines)
 
 
+# ---- Entry point: run, print the report, turn errors into clear messages ----
 def main(argv=None) -> int:
     args = parse_args(argv)
     try:

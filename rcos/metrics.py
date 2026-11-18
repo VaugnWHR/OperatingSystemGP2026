@@ -1,20 +1,10 @@
-"""Performance metrics and reporting (OWNER: Member 5).
+"""Performance metrics and the final report (owner: Member 5).
 
-A working baseline is provided so the demo produces output today.  Member 5
-extends it: comparison tables across schedulers, CSV export, charts, extra
-metrics (memory fragmentation, I/O queue length over time, energy used).
-
-DEFINITIONS (these match the course notes - CPU Scheduling / Lecture Notes 03-4):
-  Turnaround time = finish_time - arrival_time
-  Waiting time    = turnaround time - total CPU burst time   (course formula)
-  Ready-queue wait = ticks spent in READY only (extra metric: waiting time also
-                    includes time blocked on I/O and time waiting for memory)
-  Response time   = first_run_time - arrival_time
-  Throughput      = completed processes / total simulated ticks
-  CPU utilisation = ticks the CPU ran a process / total ticks
-  Memory util.    = average (used KB / total KB) sampled every tick
-  Device util.    = ticks the device was serving / total ticks
-Averages are taken over COMPLETED processes only.
+Formulas match the course's CPU Scheduling notes. Averages use completed processes only.
+  Turnaround = finish - arrival         Waiting = turnaround - CPU burst time
+  Response   = first run - arrival      Ready-queue wait = ticks in READY only
+  Throughput = completed / total ticks  CPU utilisation = busy ticks / total ticks
+  Memory utilisation = average of used/total per tick; device utilisation = busy / total ticks
 """
 from __future__ import annotations
 
@@ -25,6 +15,7 @@ from .interfaces import ResourceSnapshot
 from .process import Process, ProcessState
 
 
+# ---- Per-process results (one row of the report table) ----
 @dataclass(frozen=True)
 class ProcessMetrics:
     pid: int
@@ -35,14 +26,15 @@ class ProcessMetrics:
     finish: Optional[int]
     cpu_time: int
     admission_wait: int      # ticks in NEW (waiting for memory)
-    waiting: Optional[int]   # course definition: turnaround - CPU burst time
-    ready_wait: int          # ticks in READY (ready-queue time only)
-    io_wait: int             # ticks in WAITING (I/O queue + service)
+    waiting: Optional[int]   # turnaround - CPU burst time
+    ready_wait: int          # ticks in READY
+    io_wait: int             # ticks in WAITING
     turnaround: Optional[int]
     response: Optional[int]
     status: str
 
 
+# ---- Whole-run report and how it prints ----
 @dataclass
 class MetricsReport:
     label: str
@@ -94,6 +86,7 @@ class MetricsReport:
         return "\n".join(lines)
 
 
+# ---- Collector: samples every tick, then builds the report at the end ----
 class MetricsCollector:
     def __init__(self) -> None:
         self._cpu_busy = 0
@@ -113,6 +106,7 @@ class MetricsCollector:
         self.context_switches += 1
 
     def _gantt(self) -> List[Tuple[int, int, Optional[int]]]:
+        """Merge consecutive ticks run by the same process into one Gantt segment."""
         segments: List[Tuple[int, int, Optional[int]]] = []
         for t, pid in self._timeline:
             if segments and segments[-1][2] == pid and segments[-1][1] == t:

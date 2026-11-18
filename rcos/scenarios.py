@@ -1,8 +1,7 @@
-"""Test scenarios (OWNER: Member 5 - add more here).
+"""Demo workloads (owner: Member 5). Pick one with --scenario NAME.
 
-Each scenario is a function returning a fresh list of Process objects
-(processes are mutable, so never share them between runs).
-Scenarios are written for the default config: 512KB memory, devices SENSOR/FLASH/RADIO.
+Each function returns fresh processes for the default 512KB machine with
+SENSOR, FLASH and RADIO devices. load_scenario() reads a JSON file instead.
 """
 from __future__ import annotations
 
@@ -13,8 +12,9 @@ from .errors import ConfigError
 from .process import Process, cpu_burst as cpu, io_burst as io
 
 
+# ---- Built-in scenarios: each shows one OS problem ----
 def basic() -> List[Process]:
-    """Mixed workload; P4 cannot be admitted until memory frees (memory contention)."""
+    """Mixed workload; P04 waits for memory until another process finishes."""
     return [
         Process(1, "sensor_read",     0, 2, 128, [cpu(4), io("SENSOR", 3), cpu(2)]),
         Process(2, "data_logger",     1, 3, 192, [cpu(3), io("FLASH", 4), cpu(3)]),
@@ -25,7 +25,7 @@ def basic() -> List[Process]:
 
 
 def memory_pressure() -> List[Process]:
-    """Several large processes + one that can never fit (rejected)."""
+    """Large processes; one is bigger than all memory and is rejected."""
     return [
         Process(1, "camera_buf",  0, 2, 300, [cpu(5), io("FLASH", 2), cpu(2)]),
         Process(2, "ml_model",    1, 1, 400, [cpu(4), io("SENSOR", 1), cpu(1)]),
@@ -35,16 +35,14 @@ def memory_pressure() -> List[Process]:
 
 
 def io_heavy() -> List[Process]:
-    """Many processes fighting for the same device (I/O contention)."""
+    """Five processes queue for the same FLASH device (I/O contention)."""
     return [Process(i, f"flash_job_{i}", i, 3, 64, [cpu(1), io("FLASH", 4), cpu(1)])
             for i in range(1, 6)]
 
 
 def fragmentation() -> List[Process]:
-    """External fragmentation (Member 3 demo).  Four 128KB processes fill 512KB.
-    The two short ones (P02, P04) finish first and leave two 128KB holes that are
-    NOT next to each other.  P05 needs 200KB: 256KB is free in total, but no single
-    hole is big enough, so it waits.  Run with --compact to see compaction fix it."""
+    """External fragmentation: P02 and P04 leave two separate 128KB holes, so P05
+    (200KB) waits although 256KB is free. Try --compact."""
     return [
         Process(1, "camera_driver", 0, 2, 128, [cpu(1), io("FLASH", 20), cpu(1)]),
         Process(2, "button_check",  0, 3, 128, [cpu(2)]),
@@ -55,15 +53,9 @@ def fragmentation() -> List[Process]:
 
 
 def placement() -> List[Process]:
-    """Placement strategies (Member 3 demo).  By t=6 memory has two holes of
-    different sizes: 200KB at [100-299] and 132KB at [380-511].  P05 asks for 110KB,
-    then P06 asks for 200KB.
-      best fit  puts P05 in the 132KB hole, so the 200KB hole is still whole for P06.
-      first fit and worst fit put P05 in the 200KB hole, so P06 is blocked by
-      external fragmentation until P05 finishes its sensor read.
-      next fit starts searching after the last allocation (address 500), so here it
-      happens to pick the 132KB hole too.
-    Compare with:  python main.py --scenario placement --compare-memory"""
+    """Placement: holes of 200KB and 132KB, then requests of 110KB and 200KB.
+    Best fit (and next fit here) uses the 132KB hole and keeps 200KB free for P06;
+    first and worst fit split the 200KB hole, so P06 waits. Try --compare-memory."""
     return [
         Process(1, "logger",       0, 2, 100, [cpu(1), io("FLASH", 30), cpu(1)]),
         Process(2, "boot_check",   0, 3, 200, [cpu(2)]),
@@ -74,6 +66,7 @@ def placement() -> List[Process]:
     ]
 
 
+# ---- Lookup and loading ----
 SCENARIOS: Dict[str, Callable[[], List[Process]]] = {
     "basic": basic, "memory_pressure": memory_pressure, "io_heavy": io_heavy,
     "fragmentation": fragmentation, "placement": placement,
@@ -88,7 +81,7 @@ def get_scenario(name: str) -> List[Process]:
 
 
 def load_scenario(path: str) -> List[Process]:
-    """Load processes from JSON: a list of objects as described in Process.from_dict."""
+    """Read a JSON list of processes (format shown in Process.from_dict)."""
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)

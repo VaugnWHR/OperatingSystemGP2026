@@ -1,4 +1,4 @@
-"""CPU scheduler tests (OWNER: Member 2)."""
+"""Tests for CPU scheduling (Member 2: Samuel Kelly), including the course tutorial tables."""
 import unittest
 
 from rcos.config import SystemConfig

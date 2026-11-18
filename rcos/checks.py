@@ -1,31 +1,15 @@
-"""Invariant checker for --check (OWNER: Juvaugn, Member 1).
+"""--check: rules that must hold after every tick (Member 1: Juvaugn).
 
-An INVARIANT is a rule that must be true at the end of every tick, no matter
-which scheduler, memory strategy or scenario is running.  If one is broken, the
-simulator is in a state a real OS could never be in, so there is a bug somewhere
-(usually where two modules meet).  With --check on, the engine calls
-check_invariants() after every tick and stops with an InvariantError that names
-the tick, the rule and the process involved.
-
-THE RULES
-  I1 Location  Every process is in exactly the place its state says:
-                 NEW        -> not arrived yet, or in the job queue (waiting for memory)
-                 READY      -> in the scheduler's ready queue, exactly once
-                 RUNNING    -> on the CPU
-                 WAITING    -> held by the I/O manager (queued or being served)
-                 TERMINATED -> nowhere
-  I2 CPU       At most one process is RUNNING, and the resource manager's CPU owner
-               is that process (or nobody when the CPU is idle).
-  I3 Memory    Exactly the READY, RUNNING and WAITING processes hold memory.
-     owners    NEW processes have not been admitted; TERMINATED ones have freed it.
-  I4 Memory    Memory in use equals the sum of the holders' sizes and fits within
-     totals    total memory; the memory manager's own check() passes if it has one.
-  I5 Bursts    A READY or RUNNING process is on a CPU burst with time left; a
-               WAITING process is on an I/O burst with time left; a completed
-               process has used up every burst.
-  I6 Time      Every arrived process has each tick since arrival booked to exactly
-               one state (no ticks lost or counted twice).
-  I7 Power     Battery energy, if modelled, is never negative.
+If one breaks, two modules disagree (a bug), so the run stops and names the tick,
+the rule and the process.
+  I1 Location  each process is exactly where its state says (job queue, ready queue,
+               CPU, I/O device, or nowhere once TERMINATED)
+  I2 CPU       at most one RUNNING process, matching the CPU owner
+  I3 Memory    only READY, RUNNING and WAITING processes hold memory
+  I4 Memory    memory in use matches its holders and fits in total memory
+  I5 Bursts    READY/RUNNING have CPU work left, WAITING has I/O work left
+  I6 Time      every tick since arrival is booked to exactly one state
+  I7 Power     the battery is never negative
 """
 from __future__ import annotations
 
@@ -35,7 +19,7 @@ from typing import TYPE_CHECKING, List
 from .errors import InvariantError
 from .process import BurstType, ProcessState
 
-if TYPE_CHECKING:                       # only for type hints; avoids a circular import
+if TYPE_CHECKING:                       # type hints only (avoids a circular import)
     from .engine import Simulator
 
 MAX_REPORTED = 10                       # violations listed in one error message
@@ -50,6 +34,7 @@ EXPECTED_PLACES = {
 
 def check_invariants(sim: "Simulator") -> None:
     """Raise InvariantError listing every rule broken at the current clock."""
+    # ---- Gather: where every process currently is ----
     now = sim.clock
     problems: List[str] = []
     report = problems.append
@@ -63,7 +48,7 @@ def check_invariants(sim: "Simulator") -> None:
     io_held = sim.resources.io.held_pids()
     io_count = Counter(io_held) if io_held is not None else None
 
-    # ---- I1 location -----------------------------------------------------
+    # ---- I1 Location: each process in exactly one place ----
     for pid, count in ready.items():
         if pid not in sim.processes:
             report(f"I1 location: unknown pid {pid} is in the ready queue")
@@ -97,7 +82,7 @@ def check_invariants(sim: "Simulator") -> None:
             where = ", ".join(places) if places else "nowhere"
             report(f"I1 location: P{pid:02d} is {state.value} but is in: {where}")
 
-    # ---- I2 CPU ----------------------------------------------------------
+    # ---- I2 CPU: one running process, matching the CPU owner ----
     running_pids = [pid for pid, s in states.items() if s is ProcessState.RUNNING]
     if len(running_pids) > 1:
         report(f"I2 CPU: {len(running_pids)} processes are RUNNING: "
@@ -109,7 +94,7 @@ def check_invariants(sim: "Simulator") -> None:
     if running is not None and running.state is not ProcessState.RUNNING:
         report(f"I2 CPU: P{running.pid:02d} is on the CPU but its state is {running.state.value}")
 
-    # ---- I3 memory owners ------------------------------------------------
+    # ---- I3 Memory owners: admitted, unfinished processes only ----
     should_hold = {pid for pid, s in states.items()
                    if s in (ProcessState.READY, ProcessState.RUNNING, ProcessState.WAITING)}
     holders = sim.resources.memory_holders
@@ -119,7 +104,7 @@ def check_invariants(sim: "Simulator") -> None:
         state = states[pid].value if pid in states else "unknown"
         report(f"I3 memory owners: P{pid:02d} holds memory but is {state}")
 
-    # ---- I4 memory totals ------------------------------------------------
+    # ---- I4 Memory totals: usage adds up and the free list is sound ----
     memory = sim.resources.memory
     expected_used = sum(sim.processes[pid].memory_kb for pid in holders if pid in sim.processes)
     if memory.used_kb != expected_used:
@@ -137,7 +122,7 @@ def check_invariants(sim: "Simulator") -> None:
         except Exception as exc:                # report it as a rule break, not a crash
             report(f"I4 memory totals: memory manager check failed: {exc}")
 
-    # ---- I5 bursts -------------------------------------------------------
+    # ---- I5 Bursts: each state has the right kind of work left ----
     for pid, proc in sim.processes.items():
         burst = proc.current_burst
         if proc.state in (ProcessState.READY, ProcessState.RUNNING):
@@ -150,7 +135,7 @@ def check_invariants(sim: "Simulator") -> None:
             if proc.burst_index != len(proc.bursts):
                 report(f"I5 bursts: P{pid:02d} completed with bursts left over")
 
-    # ---- I6 time ---------------------------------------------------------
+    # ---- I6 Time: no tick lost or counted twice ----
     for pid, proc in sim.processes.items():
         if proc.arrival_time > now:
             continue                                        # has not arrived yet
@@ -161,11 +146,12 @@ def check_invariants(sim: "Simulator") -> None:
         if booked != should_be:
             report(f"I6 time: P{pid:02d} has {booked} ticks booked to states, expected {should_be}")
 
-    # ---- I7 power --------------------------------------------------------
+    # ---- I7 Power: battery never negative ----
     battery = sim.resources.power.remaining
     if battery is not None and battery < 0:
         report(f"I7 power: battery is negative ({battery})")
 
+    # ---- Report: one error listing every broken rule ----
     if problems:
         shown = problems[:MAX_REPORTED]
         more = len(problems) - len(shown)

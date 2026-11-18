@@ -1,8 +1,7 @@
-"""RCOS - Resource-Constrained OS Simulator (CIT3002, Group 5).
+"""RCOS: Resource-Constrained OS Simulator (CIT3002, Group 5).
 
-A tick-driven simulator of how an operating system manages CPU, memory, I/O
-(and optionally power) for competing processes on a resource-constrained
-(IoT/edge-style) device.  Nothing here executes real workloads: processes are
-simulated as lists of CPU and I/O bursts.
+Simulates how an OS shares CPU, memory, I/O devices and (optionally) battery
+power between processes on a small IoT/edge-style device. Processes are lists
+of CPU and I/O bursts; nothing real is executed.
 """
-__version__ = "0.1.0-skeleton"
+__version__ = "1.0.0"

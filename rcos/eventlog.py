@@ -1,15 +1,7 @@
-"""Structured event log (OWNER: Juvaugn; Member 5 consumes it).
+"""Event log (Member 1: Juvaugn). Every module reports what happens through here.
 
-LOG FORMAT (fixed - do not change):
-
-    [t=0012] [STATE ] [P03] sensor_read READY -> RUNNING (dispatched)
-    [t=0014] [MEM   ] [P04] DENIED 256KB (free 32KB, largest block 32KB) - waiting in job queue
-    [t=0020] [SYSTEM] [---] END ...
-
-    [t=<tick, 4 digits>] [<CATEGORY, 6 wide>] [P<pid, 2 digits> or ---] <message>
-
-Categories: SYSTEM (start/end), STATE (process state changes), SCHED (scheduler
-decisions), MEM, IO, RES (resource manager), POWER, WARN.
+Fixed line format:  [t=0012] [STATE ] [P03] sensor_read READY -> RUNNING (dispatched)
+                    [time]   [category] [process or ---] message
 """
 from __future__ import annotations
 
@@ -20,6 +12,7 @@ from enum import Enum
 from typing import List, Optional, TextIO
 
 
+# ---- Categories: what kind of event a line describes ----
 class Category(Enum):
     SYSTEM = "SYSTEM"
     STATE = "STATE"
@@ -31,6 +24,7 @@ class Category(Enum):
     WARN = "WARN"
 
 
+# ---- One event and how it prints ----
 @dataclass(frozen=True)
 class LogEvent:
     time: int
@@ -43,9 +37,8 @@ class LogEvent:
         return f"[t={self.time:04d}] [{self.category.value:<6}] [{who}] {self.message}"
 
 
+# ---- The log: keeps every event, prints it, exports it ----
 class EventLog:
-    """Collects every event (for metrics/tests/CSV) and optionally echoes it."""
-
     def __init__(self, echo: bool = True, stream: Optional[TextIO] = None) -> None:
         self.echo = echo
         self._stream = stream

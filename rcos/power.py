@@ -1,14 +1,8 @@
-"""Battery / power model for the optional bonus (OWNER: Member 5 + Member 2).
+"""Battery model for the optional power-aware bonus (owner: Member 5, with Member 2).
 
-NullPowerManager  - power not modelled (default; config.battery_capacity is None).
-BatteryPowerManager - simple working battery: each CPU tick costs
-    proc.power_cost_per_tick, each idle tick costs config.idle_power_cost.
-    When the battery reaches 0 the engine shuts the system down.
-
-TODO (bonus): the real "power-aware" part is a SCHEDULING decision - e.g. a
-scheduler that uses ResourceSnapshot.battery_remaining and each process's
-power cost to choose what to run (or defer) when CPU time AND energy are both
-limited, then compare it against FCFS/RR/Priority.  That lives in scheduler.py.
+Off by default. With --battery, every CPU tick costs the running process's
+power_cost_per_tick, every idle tick costs idle_power_cost, and the system shuts
+down when the battery reaches 0.
 """
 from __future__ import annotations
 
@@ -19,6 +13,7 @@ from .interfaces import PowerManager
 from .process import Process
 
 
+# ---- No battery: power is not modelled ----
 class NullPowerManager(PowerManager):
     def consume_cpu(self, proc: Process, now: int) -> None: pass
     def consume_idle(self, now: int) -> None: pass
@@ -29,6 +24,7 @@ class NullPowerManager(PowerManager):
         return None
 
 
+# ---- Battery: drains with every tick of work or idling ----
 class BatteryPowerManager(PowerManager):
     def __init__(self, capacity: float, idle_cost: float = 0.1,
                  log: Optional[EventLog] = None) -> None:

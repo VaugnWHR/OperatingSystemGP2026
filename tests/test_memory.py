@@ -1,7 +1,4 @@
-"""Tests for the contiguous memory manager (OWNER: Juvaugn, Member 3 role).
-
-Run from the project root:   python -m unittest discover -v
-"""
+"""Tests for memory allocation (Member 3 role: Juvaugn), including the Lecture Notes 06 example."""
 import random
 import unittest
 
@@ -85,12 +82,8 @@ class PlacementStrategyTests(unittest.TestCase):
 
 
 class CourseExampleTests(unittest.TestCase):
-    """Lecture Notes 06 (Memory Basics: Fragmentation), dynamic partitioning example.
-
-    Free blocks of 100, 500, 200, 600 and 300KB (in address order) receive processes
-    A-E of 212, 417, 112, 83 and 426KB.  Each test checks which block every process
-    lands in and what is left of each block, exactly as the lecture's answer states.
-    """
+    """Lecture Notes 06 dynamic partitioning example: blocks of 100/500/200/600/300KB
+    receive 212/417/112/83/426KB. Checks where each lands and what is left, per strategy."""
     BLOCKS = (100, 500, 200, 600, 300)
     REQUESTS = (212, 417, 112, 83, 426)
 

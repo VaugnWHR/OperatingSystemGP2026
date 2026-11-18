@@ -1,14 +1,8 @@
-"""THE CONTRACTS between modules. Please report any changes to Juvaugn.
+"""Contracts between the modules (Member 1: Juvaugn).
 
-Each team member implements one of these abstract classes in their own file:
-
-    Member 2 -> Scheduler       in scheduler.py
-    Member 3 -> MemoryManager   in memory.py
-    Member 4 -> IOManager       in io_manager.py
-    Member 5 -> PowerManager    in power.py   (bonus)  and MetricsCollector in metrics.py
-
-Working baseline versions already exist in each file so the whole simulator
-runs end-to-end from day one.  Replace/extend them; keep these signatures.
+Each module implements one of these classes, so the engine can use any version of it:
+Scheduler (scheduler.py), MemoryManager (memory.py), IOManager (io_manager.py),
+PowerManager (power.py). Ask Member 1 before changing a method signature.
 """
 from __future__ import annotations
 
@@ -20,64 +14,55 @@ from .eventlog import EventLog
 from .process import Process
 
 
+# ---- Snapshot: a read-only view of the machine, given to schedulers and metrics ----
 @dataclass(frozen=True)
 class ResourceSnapshot:
-    """Read-only view of the machine at one instant (handed to schedulers and metrics)."""
     time: int
     cpu_owner: Optional[int]
     mem_used_kb: int
     mem_total_kb: int
     mem_largest_free_kb: int
     io_queue_lengths: Dict[str, int] = field(default_factory=dict)   # queued + in service
-    battery_remaining: Optional[float] = None                        # None = not modelled
+    battery_remaining: Optional[float] = None                        # None = no battery model
 
     @property
     def mem_free_kb(self) -> int:
         return self.mem_total_kb - self.mem_used_kb
 
 
-# --------------------------------------------------------------------- Scheduler
+# ---- Scheduler: owns the ready queue and picks who runs next ----
 class Scheduler(ABC):
-    """Owns the READY queue and decides who runs next (Member 2).
-
-    The engine calls, every tick:  on_tick -> should_preempt (if CPU busy) -> select_next (if CPU free)
-    The engine - not the scheduler - performs the READY<->RUNNING state transitions.
-    Lower priority number = higher priority.
-    """
+    """Each tick the engine calls on_tick, then should_preempt (CPU busy) or
+    select_next (CPU free). The engine, not the scheduler, changes process states."""
     name: str = "BASE"
 
     @abstractmethod
     def add(self, proc: Process, now: int) -> None:
-        """Put a READY process in the ready queue (new arrival, I/O finished, or preempted)."""
+        """Put a READY process in the ready queue."""
 
     @abstractmethod
     def select_next(self, now: int, resources: ResourceSnapshot) -> Optional[Process]:
-        """REMOVE and return the next process to run, or None if the queue is empty.
-        `resources` lets a resource-aware scheduler look at memory/I/O/battery."""
+        """Remove and return the next process to run (None if the queue is empty)."""
 
     def should_preempt(self, running: Process, now: int, quantum_used: int) -> bool:
-        """Return True to take the CPU away from `running` right now (default: never)."""
+        """True = take the CPU away from the running process now."""
         return False
 
     def on_tick(self, now: int) -> None:
-        """Called once per tick before dispatch (hook for priority aging)."""
+        """Called once per tick before dispatch (used for aging)."""
 
     @abstractmethod
     def ready_pids(self) -> List[int]:
-        """PIDs currently in the ready queue, in the order they would be considered."""
+        """PIDs in the ready queue, in the order they would be picked."""
 
     def __len__(self) -> int:
         return len(self.ready_pids())
 
 
-# ------------------------------------------------------------------ MemoryManager
+# ---- Memory manager: a fixed pool of memory shared by all processes ----
 class MemoryManager(ABC):
-    """Limited memory pool (Member 3).
-
-    allocate() returns False for an ordinary failure (not enough memory) - it must
-    NOT raise.  Raise ResourceError only for contract violations (double allocate,
-    freeing an unknown pid).  Do NOT log the same failure every tick.
-    """
+    """allocate() returns False when memory is short (normal, never an error).
+    ResourceError is only for misuse, such as freeing memory that was never given."""
 
     def __init__(self, total_kb: int, log: Optional[EventLog] = None) -> None:
         self.total_kb = total_kb
@@ -85,11 +70,11 @@ class MemoryManager(ABC):
 
     @abstractmethod
     def allocate(self, pid: int, size_kb: int, now: int) -> bool:
-        """Try to give `pid` `size_kb` of memory.  True = granted, False = not now."""
+        """Give `pid` `size_kb` of memory if possible."""
 
     @abstractmethod
     def free(self, pid: int, now: int) -> int:
-        """Release everything held by `pid`.  Returns the KB freed."""
+        """Release `pid`'s memory; return the KB freed."""
 
     @property
     @abstractmethod
@@ -102,28 +87,21 @@ class MemoryManager(ABC):
 
     @property
     def largest_free_block_kb(self) -> int:
-        """Override if your design can fragment (free_kb >= largest block)."""
         return self.free_kb
 
     def memory_map(self) -> str:
-        """Optional: a one-line picture of memory for logs and the demo."""
+        """Optional: one-line picture of memory."""
         return ""
 
     def summary_lines(self) -> List[str]:
-        """Optional: lines printed under the report at the end of a run."""
+        """Optional: lines printed under the final report."""
         return []
 
 
-# ---------------------------------------------------------------------- IOManager
+# ---- I/O manager: one queue per device; devices work alongside the CPU ----
 class IOManager(ABC):
-    """I/O device queues (Member 4).
-
-    submit(): called when a process finishes a CPU burst whose next burst is I/O.
-              Read the request from proc.current_burst (kind IO, .device, .remaining).
-    advance(): called ONCE per tick; serve each device for one tick (decrement the
-              served process's current_burst.remaining).  Return the processes whose I/O
-              burst just reached 0.  The engine moves them WAITING -> READY.
-    """
+    """submit() queues a process's I/O burst. advance() serves every device for one
+    tick and returns the processes whose I/O just finished (engine makes them READY)."""
 
     def __init__(self, devices, log: Optional[EventLog] = None) -> None:
         self.devices = tuple(devices)
@@ -137,26 +115,22 @@ class IOManager(ABC):
 
     @abstractmethod
     def queue_lengths(self) -> Dict[str, int]:
-        """Requests queued OR in service, per device."""
+        """Requests queued or in service, per device."""
 
     @abstractmethod
     def busy_ticks(self) -> Dict[str, int]:
-        """Total ticks each device spent serving a request (for utilisation)."""
+        """Ticks each device spent serving requests (for utilisation)."""
 
     def held_pids(self) -> Optional[List[int]]:
-        """Optional: PIDs of every process queued at or being served by a device.
-        Used by --check.  Return None (the default) if your design cannot list them;
-        the checker then skips the WAITING-state check."""
+        """Optional, for --check: every PID queued at or being served by a device."""
         return None
 
 
-# ------------------------------------------------------------------ PowerManager
+# ---- Power manager: battery model for the optional power-aware bonus ----
 class PowerManager(ABC):
-    """Battery model for the optional Power-Aware module (Member 5 + Member 2)."""
-
     @abstractmethod
     def consume_cpu(self, proc: Process, now: int) -> None:
-        """Charge one tick of CPU time for `proc`."""
+        """Charge one tick of CPU work by `proc`."""
 
     @abstractmethod
     def consume_idle(self, now: int) -> None:
@@ -168,8 +142,8 @@ class PowerManager(ABC):
     @property
     @abstractmethod
     def remaining(self) -> Optional[float]:
-        """Energy left, or None if power is not modelled."""
+        """Energy left (None = no battery model)."""
 
     def can_afford(self, proc: Process) -> bool:
-        """Hook for power-aware schedulers: can the battery pay for one more tick of `proc`?"""
+        """For power-aware schedulers: can the battery pay for one more tick of `proc`?"""
         return not self.is_depleted()

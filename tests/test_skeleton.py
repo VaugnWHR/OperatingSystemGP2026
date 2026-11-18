@@ -1,8 +1,5 @@
-"""Skeleton smoke tests (OWNER: Member 5 extends; Member 1 wrote the first set).
-
-Run from the project root:   python -m unittest discover -v
-Each module owner should add their own test file (test_scheduler.py, ...).
-"""
+"""Core tests (Member 1: Juvaugn): process model, engine, resource manager and log format.
+Run every test from the project root with:  python -m unittest discover -v"""
 import json
 import os
 import re
@@ -19,7 +16,7 @@ from rcos.scenarios import SCENARIOS, get_scenario, load_scenario
 
 
 class _TestRR(Scheduler):
-    """Tiny test double so the engine's PREEMPTION path is tested before Member 2 finishes RR."""
+    """Minimal Round Robin, so the engine's preemption path is tested on its own."""
     name = "TEST-RR"
 
     def __init__(self, quantum):

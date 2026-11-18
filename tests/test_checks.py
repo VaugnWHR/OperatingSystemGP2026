@@ -1,12 +1,5 @@
-"""Tests for the --check invariant checker (OWNER: Juvaugn, Member 1).
-
-Two kinds of test:
-  * correct runs never trigger a false alarm (every scenario, strategy and path);
-  * deliberately broken modules ARE caught, with the right rule named.
-The broken modules are the kind of mistake that shows up during integration.
-
-Run from the project root:   python -m unittest discover -v
-"""
+"""Tests for --check (Member 1: Juvaugn): no false alarms on correct runs, and
+deliberately broken modules are caught with the right rule named."""
 import io
 import unittest
 from collections import deque

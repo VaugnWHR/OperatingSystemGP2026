@@ -1,23 +1,21 @@
-"""Exception types.  Every failure the simulator can detect raises one of these,
-so main.py can report a clear message instead of a raw traceback."""
+"""Error types. main.py catches SimulationError and prints a clear message."""
 
 
 class SimulationError(Exception):
-    """Base class for all simulator errors."""
+    """Base class for every simulator error."""
 
 
 class ConfigError(SimulationError, ValueError):
-    """Bad configuration, scenario file, or process definition."""
+    """Bad configuration, scenario file or process definition."""
 
 
 class InvalidStateTransition(SimulationError):
-    """A process tried to make a transition the 5-state model does not allow."""
+    """A state change the 5-state process model does not allow."""
 
 
 class ResourceError(SimulationError):
-    """A resource-manager contract was violated (e.g. CPU double-assigned,
-    freeing memory that was never allocated, unknown I/O device)."""
+    """A resource was misused (e.g. CPU given twice, freeing unowned memory)."""
 
 
 class InvariantError(SimulationError):
-    """The --check option found the simulator in an impossible state (a bug)."""
+    """--check found the simulator in an impossible state (a bug)."""
