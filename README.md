@@ -46,7 +46,7 @@ Notes 06 memory placement example (first, next, best and worst fit).
 | engine.py, process.py, resources.py, interfaces.py, config.py, eventlog.py, checks.py, main.py | Juvaugn Foster (Member 1) | done |
 | memory.py | Juvaugn Foster (Member 3 role) | done |
 | scheduler.py | Samuel Kelly (Member 2) | done |
-| io_manager.py | Britansia Austin (Member 4) | working FIFO device queues; extensions in progress |
+| io_manager.py | Britansia Austin (Member 4) | done |
 | metrics.py, scenarios.py, power.py | Tijauni Pandohie (Member 5) | working baseline |
 
 ## How a tick works
