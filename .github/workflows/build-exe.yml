@@ -3,6 +3,8 @@ on:
   push:
     branches: [windows-build]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -20,3 +22,13 @@ jobs:
         with:
           name: rcos_simulator-windows
           path: dist/rcos_simulator.exe
+      - name: Save the executable on this branch
+        shell: bash
+        run: |
+          mkdir -p release
+          cp dist/rcos_simulator.exe release/
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add release/rcos_simulator.exe
+          git commit -m "Add built Windows executable [skip ci]"
+          git push
