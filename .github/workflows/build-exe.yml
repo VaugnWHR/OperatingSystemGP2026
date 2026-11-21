@@ -1,0 +1,22 @@
+name: Build Windows executable
+on:
+  push:
+    branches: [windows-build]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller
+      - run: python -m unittest discover
+      - run: pyinstaller --onefile --name rcos_simulator main.py
+      - run: dist\rcos_simulator.exe --check --quiet
+      - run: dist\rcos_simulator.exe --compare-schedulers
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcos_simulator-windows
+          path: dist/rcos_simulator.exe
