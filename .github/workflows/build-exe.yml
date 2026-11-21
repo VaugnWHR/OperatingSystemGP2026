@@ -1,0 +1,34 @@
+name: Build Windows executable
+on:
+  push:
+    branches: [windows-build]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller
+      - run: python -m unittest discover
+      - run: pyinstaller --onefile --name rcos_simulator main.py
+      - run: dist\rcos_simulator.exe --check --quiet
+      - run: dist\rcos_simulator.exe --compare-schedulers
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcos_simulator-windows
+          path: dist/rcos_simulator.exe
+      - name: Save the executable on this branch
+        shell: bash
+        run: |
+          mkdir -p release
+          cp dist/rcos_simulator.exe release/
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add release/rcos_simulator.exe
+          git commit -m "Add built Windows executable [skip ci]"
+          git push
