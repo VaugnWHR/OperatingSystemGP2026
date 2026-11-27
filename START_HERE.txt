@@ -1,0 +1,7 @@
+RCOS: Resource-Constrained OS Simulator (CIT3002, Group 5)
+
+source\          Python source code (run: python main.py)
+executable\      Windows program: double-click run_demo.bat, or run rcos_simulator.exe from a Command Prompt
+documentation\   User Manual and Technical Documentation (PDF)
+
+Source repository: https://github.com/VaugnWHR/OperatingSystemGP2026
